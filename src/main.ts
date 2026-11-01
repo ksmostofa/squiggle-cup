@@ -8,7 +8,7 @@ import { type Dare, decode, encode } from './encode';
 import { thumb } from './ink';
 import { type Cast, type Entrant, Room } from './net';
 import { PLACINGS, fact, formalName } from './names';
-import { Pad, type PadResult, THICK, THIN } from './pad';
+import { DRAW_TIME, DRAW_TIMES, Pad, type PadResult, THICK, THIN } from './pad';
 import { Race, type Racer } from './race';
 import { Renderer } from './render';
 import { mulberry32 } from './rng';
@@ -72,6 +72,16 @@ let heat = 0;
 const sent = new Map<string, { code: string; name: string }>();
 let drawingPad: Pad | null = null;
 let hostDeadline = 0;
+let drawTime = Number(store.get('sc:time')) || DRAW_TIME;
+const TIME_LABELS = ['Quick', 'Normal', 'Careful'];
+// Quick 20 / Normal 30 / Careful 60: the host's pick sets everyone's clock.
+const timePicker = () => `<div class="seg" role="radiogroup" aria-label="Drawing time">${DRAW_TIMES.map((t, i) => `<button type="button" role="radio" aria-checked="${t === drawTime}" data-t="${t}" class="${t === drawTime ? 'on' : ''}"><b>${TIME_LABELS[i]}</b><span class="mono">${t}s</span></button>`).join('')}</div>`;
+function wireTime(el: HTMLElement) {
+  el.querySelectorAll<HTMLButtonElement>('.seg button').forEach((b) => b.addEventListener('click', () => {
+    drawTime = Number(b.dataset.t); store.set('sc:time', String(drawTime)); sfx.click();
+    el.querySelectorAll('.seg button').forEach((x) => { x.classList.toggle('on', x === b); x.setAttribute('aria-checked', String(x === b)); });
+  }));
+}
 let started = -1;
 let stopRace: (() => void) | null = null;
 
@@ -106,24 +116,25 @@ function leaveRoom() { room?.leave(); room = null; }
 function home(error = '') {
   const el = screen('home', `${masthead('NO. 01 — STRAIGHT')}
     <section class="hero">
-      <p class="kicker mono">A drawing race · 2–5 players</p>
-      <h1>Draw a creature.<br><span>It races on its own.</span></h1>
-      <p class="lede">Its shape decides how it moves: legs run, wings fly, round things roll, long things slither. Five lanes, forty metres, no buttons. The better drawing wins.</p>
+      <h1>Draw it.<br><span>Race it.</span></h1>
+      <p class="lede">Legs run. Wings flap. Blobs ooze. No luck.</p>
     </section>
     <section class="panel">
-      <label class="field"><span class="mono">Your name</span><input class="pname" maxlength="22" autocomplete="nickname" placeholder="Player" value="${esc(store.get('sc:name'))}"></label>
+      <label class="field"><span class="mono">Your name</span><input class="pname" maxlength="22" autocomplete="nickname" placeholder="Your name" value="${esc(store.get('sc:name'))}"></label>
+      ${timePicker()}
       <div class="actions">
-        <button class="btn primary solo">Race solo <span aria-hidden="true">→</span></button>
-        <button class="btn create">Create a room</button>
+        <button class="btn primary solo">Play solo <span aria-hidden="true">→</span></button>
+        <button class="btn create">New room</button>
       </div>
       <form class="join">
         <input class="code mono" maxlength="4" autocomplete="off" autocapitalize="characters" spellcheck="false" placeholder="CODE" aria-label="Room code" value="${esc(roomInHash() ?? '')}">
-        <button class="btn">Join room</button>
+        <button class="btn">Join</button>
       </form>
       <p class="error" role="alert">${esc(error)}</p>
     </section>
-    <footer class="foot mono"><span>DWG 01</span><span>SCALE NTS</span><span>40 000 MM</span></footer>`);
+    <footer class="foot mono"><span>DWG 01</span><span>NO LUCK</span><span>40 000 MM</span></footer>`);
   wire(el);
+  wireTime(el);
   const nameIn = el.querySelector<HTMLInputElement>('.pname')!;
   const name = () => { const n = nameIn.value.trim().slice(0, 22); store.set('sc:name', n); return n; };
   el.querySelector('.solo')!.addEventListener('click', () => { unlock(); sfx.click(); name(); drawScreen({ kind: 'solo' }); });
@@ -168,11 +179,13 @@ function lobby() {
     <section class="roster">
       <p class="kicker mono">Lanes</p>
       <ol class="lanes"></ol>
-      <p class="note">Empty lanes are filled with drawn bots.</p>
+      <p class="note">Empty lanes race the house.</p>
     </section>
-    <div class="actions"><button class="btn primary start">Everyone draw <span aria-hidden="true">→</span></button><p class="wait mono"></p></div>
+    <div class="host-only">${timePicker()}</div>
+    <div class="actions"><button class="btn primary start">Start <span aria-hidden="true">→</span></button><p class="wait mono"></p></div>
     <p class="toast" role="status"></p>`);
   wire(el);
+  wireTime(el);
   const list = el.querySelector('.lanes')!;
   refresh = () => {
     list.innerHTML = Array.from({ length: LANES }, (_, i) => {
@@ -180,10 +193,11 @@ function lobby() {
       return `<li class="${p?.id === r.id ? 'me' : ''}${p ? '' : ' empty'}"><span class="bubble mono">${pad2(i + 1)}</span><span class="who">${p ? esc(p.name) : 'Bot'}</span><span class="tag mono">${p ? (p.id === r.host ? 'HOST' : p.id === r.id ? 'YOU' : '') : ''}</span></li>`;
     }).join('');
     el.querySelector<HTMLButtonElement>('.start')!.hidden = !r.isHost;
-    el.querySelector('.wait')!.textContent = r.isHost ? '' : 'Waiting for the host to start';
+    el.querySelector<HTMLElement>('.host-only')!.hidden = !r.isHost;
+    el.querySelector('.wait')!.textContent = r.isHost ? '' : 'Host starts';
   };
   refresh();
-  el.querySelector('.start')!.addEventListener('click', () => { sfx.click(); r.cast({ k: 'draw', round: round + 1 }); });
+  el.querySelector('.start')!.addEventListener('click', () => { sfx.click(); r.cast({ k: 'draw', round: round + 1, time: drawTime }); });
   el.querySelector('.invite')!.addEventListener('click', async () => {
     const link = `${location.origin}${location.pathname}#room=${r.code}`;
     try { await navigator.clipboard.writeText(link); el.querySelector('.toast')!.textContent = 'Invite link copied.'; }
@@ -198,7 +212,8 @@ function onCast(from: string, c: Cast) {
     round = c.round;
     sent.clear();
     started = -1;
-    hostDeadline = performance.now() + 45000;
+    if (c.time) drawTime = c.time;
+    hostDeadline = performance.now() + (drawTime + 20) * 1000;
     drawScreen({ kind: 'room', room: r }, me?.strokes);
   } else if (c.k === 'drawing') {
     if (c.round !== round) return;
@@ -239,7 +254,7 @@ function drawScreen(mode: Mode, initial: Stroke[] = []) {
     ${inRoom ? '<ol class="who-drew mono" aria-label="Who has finished"></ol>' : ''}
     <div class="waiting" role="status"><p class="mono">SENT</p><p class="msg"></p></div>`);
   wire(el);
-  const pad = new Pad((r: PadResult) => submit(mode, r, el), { initial, name: me?.name ?? store.get('sc:name'), title: inRoom ? `DWG ${pad2(round)} — DRAW NOW` : 'DWG 01 — CREATURE' });
+  const pad = new Pad((r: PadResult) => submit(mode, r, el), { initial, name: me?.name ?? store.get('sc:name'), title: inRoom ? `DWG ${pad2(round)} — DRAW NOW` : 'DWG 01 — CREATURE', time: drawTime });
   drawingPad = pad;
   pad.mount(el);
   if (inRoom) {
@@ -275,6 +290,9 @@ function submit(mode: Mode, r: PadResult, el: HTMLElement) {
 // ---------- Race ----------
 
 // The live race, so taps arriving from the room reach the right lane.
+// Rhythm taps are switched off until the control is clear enough to explain
+// itself; the race engine still supports them (src/race.ts).
+const RHYTHM = false;
 let live: { race: Race; round: number; ids: string[] } | null = null;
 const logs = new Map<string, number[]>(); // finished tap logs this round, by player id
 
@@ -294,7 +312,7 @@ function runRace(cs: Contender[], seed: number, focus: string, mode: Mode, entra
       <div class="tb-cell clock-cell"><span class="mono k">TIME</span><span class="mono v clock">00.00</span></div>
       <ol class="standings mono" aria-live="off"></ol>
     </header>
-    ${mine >= 0 && !replaying ? `<button class="beat" aria-label="Tap on the beat"><i class="ring"></i><i class="dot"></i><b class="groove"><i></i></b><span class="mono hint">TAP ON THE BEAT</span></button>` : ''}
+    ${RHYTHM && mine >= 0 && !replaying ? `<button class="beat" aria-label="Tap on the beat"><i class="ring"></i><i class="dot"></i><b class="groove"><i></i></b><span class="mono hint">TAP ON THE BEAT</span></button>` : ''}
     <div class="count mono" aria-live="assertive"></div>`);
   const canvas = el.querySelector<HTMLCanvasElement>('.stage')!;
   const view = new Renderer(canvas, race);
@@ -313,7 +331,7 @@ function runRace(cs: Contender[], seed: number, focus: string, mode: Mode, entra
     if (mode.kind === 'room') mode.room.cast({ k: 'tap', round, tick });
   };
   const onKey = (e: KeyboardEvent) => { if (!e.repeat && (e.code === 'Space' || e.code === 'Enter' || e.key.length === 1)) tap(e); };
-  if (me && !replaying) { el.addEventListener('pointerdown', tap); addEventListener('keydown', onKey); }
+  if (RHYTHM && me && !replaying) { el.addEventListener('pointerdown', tap); addEventListener('keydown', onKey); }
 
   let acc = 0, last = performance.now(), overAt = 0, shown = '', frame = 0, raf = 0, lastBeat = -1, sentLog = false;
   const loop = (now: number) => {
@@ -411,7 +429,7 @@ function results(race: Race, seed: number, cs: Contender[], mode: Mode, entrants
     <div class="actions">
       ${mode.kind === 'replay'
         ? '<button class="btn primary beat">Draw one to race them <span aria-hidden="true">→</span></button><button class="btn again">Watch again</button>'
-        : guest ? '<p class="wait mono">The host picks what\'s next</p>'
+        : guest ? '<p class="wait mono">Host picks next</p>'
         : '<button class="btn primary again">Rematch</button><button class="btn redraw">Redraw</button>'}
       <button class="btn ghost share">Share this race</button>
     </div>
@@ -430,7 +448,7 @@ function results(race: Race, seed: number, cs: Contender[], mode: Mode, entrants
   });
   el.querySelector('.redraw')?.addEventListener('click', () => {
     sfx.click();
-    if (mode.kind === 'room') { if (host) mode.room.cast({ k: 'draw', round: round + 1 }); }
+    if (mode.kind === 'room') { if (host) mode.room.cast({ k: 'draw', round: round + 1, time: drawTime }); }
     else drawScreen(mode, me?.strokes);
   });
   el.querySelector('.beat')?.addEventListener('click', () => { sfx.click(); if (mode.kind === 'replay') drawScreen(mode); });

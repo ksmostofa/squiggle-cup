@@ -7,7 +7,7 @@ export interface Player { id: string; name: string }
 export interface Entrant { id: string; name: string; code: string }
 
 export type Cast =
-  | { k: 'draw'; round: number }
+  | { k: 'draw'; round: number; time?: number }
   | { k: 'drawing'; round: number; code: string; name: string }
   | { k: 'race'; round: number; seed: number; entrants: Entrant[] }
   | { k: 'tap'; round: number; tick: number }

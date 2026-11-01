@@ -18,7 +18,7 @@ export const SUBSTEPS = 4;
 export const REACTION = 0.2;   // seconds off the line, the same for everyone
 export const MAX_BOOST = 0.12; // a perfect groove: +12% speed, never more
 export const WINDOW = 0.12;    // seconds either side of a beat that count as on it
-export const BOT_GROOVE = 0.5; // house creatures keep a steady half groove
+export const BOT_GROOVE = 0;   // house creatures get no groove while tapping is off
 const GAIN = 0.26, MISS = 0.15, DECAY = 0.28; // groove per hit, per miss, lost per second
 
 // Seconds per beat, matched to how each kind moves.

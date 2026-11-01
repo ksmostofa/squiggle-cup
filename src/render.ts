@@ -122,10 +122,7 @@ function shadow(ctx: CanvasRenderingContext2D, x: number, y: number, rx: number,
 // ---------- The race board ----------
 
 const LANE_Z = 1.25; // metres between lane lines
-const TILT = 0.85;   // how much the far lanes shrink: 1 / (1 + TILT)
-const OAK = '#d9c4a0';
-// Cheap seeded hash for desk grain: the same desk every frame.
-const hash = (n: number) => { const x = Math.sin(n * 127.1) * 43758.5453; return x - Math.floor(x); };
+const TILT = 0.32;   // how much the far lanes shrink: 1 / (1 + TILT)
 const ease = (x: number) => 1 - (1 - Math.min(1, Math.max(0, x))) ** 3;
 
 interface Finish { who: number; place: number; time: number; at: number }
@@ -138,10 +135,6 @@ export class Renderer {
   private smctx = this.small.getContext('2d')!;
   private small2 = document.createElement('canvas');
   private sm2ctx = this.small2.getContext('2d')!;
-  private mid = document.createElement('canvas');
-  private midctx = this.mid.getContext('2d')!;
-  private mid2 = document.createElement('canvas');
-  private mid2ctx = this.mid2.getContext('2d')!;
   private camX = 3;
   private viewW = 0;
   private born = 0;
@@ -169,10 +162,8 @@ export class Renderer {
     const W = Math.round(cv.clientWidth * dpr), H = Math.round(cv.clientHeight * dpr);
     if (cv.width !== W || cv.height !== H) {
       cv.width = this.sharp.width = W; cv.height = this.sharp.height = H;
-      this.small.width = this.small2.width = Math.max(1, Math.round(W / 8));
-      this.small.height = this.small2.height = Math.max(1, Math.round(H / 8));
-      this.mid.width = this.mid2.width = Math.max(1, Math.round(W / 3));
-      this.mid.height = this.mid2.height = Math.max(1, Math.round(H / 3));
+      this.small.width = this.small2.width = Math.max(1, Math.round(W / 6));
+      this.small.height = this.small2.height = Math.max(1, Math.round(H / 6));
     }
     this.W = W; this.H = H;
     this.born ||= now;
@@ -198,7 +189,7 @@ export class Renderer {
 
     // Projection of the sheet: X along the course, Z across it (0 = front edge).
     const Zmax = N * LANE_Z;
-    const yFront = H * (portrait ? 0.7 : 0.78), yBack = H * (portrait ? 0.44 : 0.38);
+    const yFront = H * (portrait ? 0.7 : 0.8), yBack = H * (portrait ? 0.4 : 0.36);
     const yH = (yBack * (1 + TILT) - yFront) / TILT;
     const s0 = W / this.viewW;
     const f = (Z: number) => 1 / (1 + (TILT * Z) / Zmax);
@@ -208,86 +199,22 @@ export class Renderer {
 
     const c = this.sctx;
     c.setTransform(1, 0, 0, 1, 0, 0);
+    c.fillStyle = DESK;
+    c.fillRect(0, 0, W, H);
+
+    // The sheet, with a soft drop shadow on the desk.
     const quad = (xa: number, xb: number, za: number, zb: number) => {
       const p = [P(xa, za), P(xb, za), P(xb, zb), P(xa, zb)];
       c.beginPath(); c.moveTo(...p[0]); for (const q of p.slice(1)) c.lineTo(...q); c.closePath();
     };
-    const poly = (pts: Pt[]) => { c.beginPath(); c.moveTo(...pts[0]); for (const q of pts.slice(1)) c.lineTo(...q); c.closePath(); };
-    // Lift a point off the desk by h metres (screen up, scaled by depth).
-    const up = (X: number, Z: number, h: number): Pt => { const p = P(X, Z); return [p[0], p[1] - h * s0 * f(Z)]; };
-
-    // ---- The desk: pale oak, grain running along the course ----
-    c.fillStyle = OAK;
-    c.fillRect(0, 0, W, H);
-    for (let Z = -4, n = 0; Z < Zmax + 40; n++) {
-      const y = P(0, Z)[1];
-      const g = hash(n);
-      const zz = Z;
-      Z += 0.05 + 0.12 * hash(n + 0.5);
-      if (y < -4 || y > H + 4) continue;
-      c.fillStyle = g > 0.82 ? 'rgba(150,115,75,0.22)' : g > 0.5 ? 'rgba(185,154,112,0.18)' : 'rgba(255,245,225,0.10)';
-      c.fillRect(0, y, W, Math.max(1, (0.03 + 0.05 * g) * s0 * f(zz) * 0.5));
-    }
-
-    // A second sheet underneath, slightly askew, so the board reads as paper.
-    const rot = (X: number, Z: number, a: number, cx: number, cz: number): Pt => {
-      const ca = Math.cos(a), sa = Math.sin(a), dx = X - cx, dz = Z - cz;
-      return P(cx + dx * ca - dz * sa, cz + dx * sa + dz * ca);
-    };
-    const cx0 = (X0 + X1) / 2, cz0 = (Zf + Zb) / 2;
     c.save();
-    c.shadowColor = 'rgba(60,40,20,0.22)'; c.shadowBlur = 22 * dpr; c.shadowOffsetY = 8 * dpr;
-    c.fillStyle = '#efede7';
-    poly([rot(X0 - 0.3, Zf - 0.2, 0.012, cx0, cz0), rot(X1 + 0.3, Zf - 0.2, 0.012, cx0, cz0), rot(X1 + 0.3, Zb + 0.35, 0.012, cx0, cz0), rot(X0 - 0.3, Zb + 0.35, 0.012, cx0, cz0)]);
-    c.fill();
-    c.restore();
-
-    // The sheet itself.
-    c.save();
-    c.shadowColor = 'rgba(60,40,20,0.18)'; c.shadowBlur = 10 * dpr; c.shadowOffsetY = 3 * dpr;
+    c.shadowColor = 'rgba(40,40,50,0.16)';
+    c.shadowBlur = 28 * dpr;
+    c.shadowOffsetY = 10 * dpr;
     c.fillStyle = PAPER;
     quad(X0, X1, Zf, Zb);
     c.fill();
     c.restore();
-
-    // ---- Props at miniature scale (a creature is a doodle a few cm long) ----
-    const propShadow = (pts: Pt[], blur = 14) => {
-      c.save(); c.shadowColor = 'rgba(50,30,10,0.35)'; c.shadowBlur = blur * dpr; c.shadowOffsetY = 6 * dpr;
-      c.fillStyle = 'rgba(0,0,0,0.12)'; poly(pts); c.fill(); c.restore();
-    };
-    // A pencil lying beyond the far edge, repeating along the desk.
-    for (const PX of [4, 31]) {
-      const z = Zb + 1.1, len = 7.5, r = 0.16;
-      const a0 = PX, a1 = PX + len;
-      propShadow([P(a0, z - r), P(a1, z - r), P(a1 + 1.1, z), P(a1, z + r), P(a0, z + r)]);
-      c.fillStyle = '#e9a92a'; poly([up(a0, z - r, r * 1.2), up(a1, z - r, r * 1.2), up(a1, z, r * 2), up(a0, z, r * 2)]); c.fill();
-      c.fillStyle = '#f6c443'; poly([up(a0, z, r * 2), up(a1, z, r * 2), up(a1, z + r, r * 1.2), up(a0, z + r, r * 1.2)]); c.fill();
-      c.fillStyle = '#fbd76a'; poly([up(a0, z - r * 0.15, r * 2.02), up(a1, z - r * 0.15, r * 2.02), up(a1, z + r * 0.15, r * 2.02), up(a0, z + r * 0.15, r * 2.02)]); c.fill();
-      c.fillStyle = '#ecd2a8'; poly([up(a1, z - r, r * 1.2), up(a1 + 0.9, z, r * 1.2), up(a1, z + r, r * 1.2), up(a1, z, r * 2)]); c.fill();
-      c.fillStyle = '#3a3a3e'; poly([up(a1 + 0.62, z - r * 0.3, r * 1.2), up(a1 + 1.1, z, r * 1.2), up(a1 + 0.62, z + r * 0.3, r * 1.2)]); c.fill();
-      c.fillStyle = '#b8bcc2'; poly([up(a0 - 0.45, z - r, r * 1.2), up(a0, z - r, r * 1.2), up(a0, z + r, r * 1.2), up(a0 - 0.45, z + r, r * 1.2), up(a0 - 0.45, z, r * 2.05)]); c.fill();
-      c.fillStyle = '#e88a8a'; poly([up(a0 - 1.0, z - r, r * 1.2), up(a0 - 0.45, z - r, r * 1.2), up(a0 - 0.45, z + r, r * 1.2), up(a0 - 1.0, z + r, r * 1.2), up(a0 - 1.0, z, r * 2)]); c.fill();
-    }
-    // A white eraser in a blue sleeve.
-    for (const EX of [17, 44]) {
-      const z0 = Zb + 0.5, z1 = z0 + 0.9, x1 = EX + 1.9, h = 0.45;
-      propShadow([P(EX, z0), P(x1, z0), P(x1, z1), P(EX, z1)], 10);
-      c.fillStyle = '#e7e7e2'; poly([P(EX, z0), P(x1, z0), up(x1, z0, h), up(EX, z0, h)]); c.fill();
-      c.fillStyle = '#fbfbf8'; poly([up(EX, z0, h), up(x1, z0, h), up(x1, z1, h), up(EX, z1, h)]); c.fill();
-      c.fillStyle = '#2e5fd8'; poly([P(EX + 0.6, z0), P(x1, z0), up(x1, z0, h + 0.01), up(EX + 0.6, z0, h + 0.01)]); c.fill();
-      c.fillStyle = '#3b6ee6'; poly([up(EX + 0.6, z0, h + 0.01), up(x1, z0, h + 0.01), up(x1, z1, h + 0.01), up(EX + 0.6, z1, h + 0.01)]); c.fill();
-    }
-    // A coffee ring stained into the far margin.
-    {
-      const o = P(26, Zb - 0.55), ax = P(27, Zb - 0.55), bz = P(26, Zb + 0.45);
-      c.save();
-      c.setTransform(ax[0] - o[0], 0, o[0] - bz[0], o[1] - bz[1], o[0], o[1]);
-      c.lineWidth = 0.07; c.strokeStyle = 'rgba(150,95,45,0.22)';
-      c.beginPath(); c.arc(0, 0, 0.5, 0.3, Math.PI * 2 - 0.2); c.stroke();
-      c.lineWidth = 0.025; c.strokeStyle = 'rgba(150,95,45,0.15)';
-      c.beginPath(); c.arc(0.04, 0.02, 0.43, 0, Math.PI * 2); c.stroke();
-      c.restore();
-    }
 
     const xa = this.camX - this.viewW * 1.2, xb = this.camX + this.viewW * 1.2; // what's in view
     const vx0 = Math.max(X0, xa), vx1 = Math.min(X1, xb);
@@ -392,10 +319,7 @@ export class Renderer {
       if (gx < -3 * k || gx > W + 3 * k) continue;
       const alt = b.y + b.bottom;
       shadow(c, gx, gy, b.length * 0.42 * k, b.length * 0.42 * k * 0.22, alt);
-      c.save();
-      c.shadowColor = 'rgba(30,25,20,0.22)'; c.shadowBlur = 3 * dpr; c.shadowOffsetY = 1.5 * dpr;
       paintCreature(c, { body: b, anatomy: r.anatomy, size: r.s.size, t: now / 1000 }, gx, gy - b.y * k, k);
-      c.restore();
       const top = gy - (b.y + b.height * 0.55 + 0.18) * k;
       if (r === me) myTop = top;
       tags.push({ x: gx, y: top, name: r.name, mine: r === me, done: r.finishTime != null ? r.finishTime.toFixed(2) : null });
@@ -420,75 +344,43 @@ export class Renderer {
       c.globalAlpha = 1;
     }
 
-    // A clear ruler along the front edge, nearest the camera (so the softest).
-    {
-      const z0 = Zf - 1.35, z1 = Zf - 0.35, h = 0.08;
-      const xa = Math.max(X0, vx0 - 2), xb = Math.min(X1, vx1 + 2);
-      c.fillStyle = 'rgba(40,40,40,0.10)'; poly([P(xa, z0 - 0.08), P(xb, z0 - 0.08), P(xb, z1), P(xa, z1)]); c.fill();
-      c.fillStyle = 'rgba(235,240,238,0.55)'; poly([up(xa, z0, h), up(xb, z0, h), up(xb, z1, h), up(xa, z1, h)]); c.fill();
-      c.fillStyle = 'rgba(200,210,206,0.7)'; poly([P(xa, z0), P(xb, z0), up(xb, z0, h), up(xa, z0, h)]); c.fill();
-      c.strokeStyle = 'rgba(30,30,30,0.55)';
-      for (let X = Math.ceil(xa * 4) / 4; X <= xb; X += 0.25) {
-        const major = Math.abs(X - Math.round(X)) < 1e-6;
-        c.lineWidth = dpr * (major ? 1.4 : 0.9);
-        c.beginPath(); c.moveTo(...up(X, z1, h)); c.lineTo(...up(X, z1 - (major ? 0.32 : 0.16), h)); c.stroke();
-      }
-    }
-
     // ---- Tilt-shift: soft above and below the lanes, sharp along them ----
-    // Three depths: heavy blur everywhere, a medium blur nearer the lanes,
-    // and the sharp image only in the focus band, so softness grows with
-    // distance from the lanes like a real tilt lens.
     const out = this.ctx;
     out.setTransform(1, 0, 0, 1, 0, 0);
+    const sm = this.smctx, sw = this.small.width, sh = this.small.height;
+    sm.setTransform(1, 0, 0, 1, 0, 0);
+    sm.drawImage(this.sharp, 0, 0, sw, sh);
+    let blurred: HTMLCanvasElement = this.small;
+    if (this.filterOk && !lowEnd()) {
+      const s2 = this.sm2ctx;
+      s2.setTransform(1, 0, 0, 1, 0, 0);
+      s2.clearRect(0, 0, sw, sh);
+      s2.filter = 'blur(1.6px)';
+      s2.drawImage(this.small, 0, 0);
+      s2.filter = 'none';
+      blurred = this.small2;
+    }
     out.imageSmoothingEnabled = true;
     out.imageSmoothingQuality = 'high';
-    const bandTop = Math.min(P(0, Zmax)[1] - H * 0.04, myTop - H * 0.02);
-    const bandBot = P(0, 0)[1] + H * 0.03;
-    const mask = (ctx: CanvasRenderingContext2D, w: number, h: number, sc: number, feather: number) => {
-      const t = bandTop * sc, bt = bandBot * sc, fe = feather * sc;
-      const g = ctx.createLinearGradient(0, t - fe, 0, bt + fe);
-      const span = bt - t + 2 * fe;
-      g.addColorStop(0, 'rgba(0,0,0,0)');
-      g.addColorStop(fe / span, 'rgba(0,0,0,1)');
-      g.addColorStop(1 - fe / span, 'rgba(0,0,0,1)');
-      g.addColorStop(1, 'rgba(0,0,0,0)');
-      ctx.setTransform(1, 0, 0, 1, 0, 0);
-      ctx.globalCompositeOperation = 'destination-in';
-      ctx.fillStyle = g;
-      ctx.fillRect(0, 0, w, h);
-      ctx.globalCompositeOperation = 'source-over';
-    };
-    const blurInto = (src: HTMLCanvasElement, dst: CanvasRenderingContext2D, w: number, h: number, px: number) => {
-      dst.setTransform(1, 0, 0, 1, 0, 0);
-      dst.clearRect(0, 0, w, h);
-      dst.filter = `blur(${px}px)`;
-      dst.drawImage(src, 0, 0, w, h);
-      dst.filter = 'none';
-    };
-    const sw = this.small.width, sh = this.small.height, mw = this.mid.width, mh = this.mid.height;
-    this.smctx.setTransform(1, 0, 0, 1, 0, 0);
-    this.smctx.drawImage(this.sharp, 0, 0, sw, sh);
-    if (this.filterOk && !lowEnd()) {
-      blurInto(this.small, this.sm2ctx, sw, sh, 1.8);
-      out.drawImage(this.small2, 0, 0, W, H);
-      this.midctx.setTransform(1, 0, 0, 1, 0, 0);
-      this.midctx.drawImage(this.sharp, 0, 0, mw, mh);
-      blurInto(this.mid, this.mid2ctx, mw, mh, 1.3);
-      mask(this.mid2ctx, mw, mh, mw / W, H * 0.22);
-      out.drawImage(this.mid2, 0, 0, W, H);
-    } else {
-      out.drawImage(this.small, 0, 0, W, H);
-    }
-    mask(c, W, H, 1, H * 0.09);
+    out.drawImage(blurred, 0, 0, W, H);
+    // Mask the sharp copy to the focus band, then lay it on top.
+    const bandTop = Math.min(P(0, Zmax)[1] - H * 0.05, myTop - H * 0.02);
+    const bandBot = P(0, 0)[1] + H * 0.035;
+    const feather = H * 0.13;
+    c.globalCompositeOperation = 'destination-in';
+    const g = c.createLinearGradient(0, bandTop - feather, 0, bandBot + feather);
+    const span = bandBot - bandTop + 2 * feather;
+    g.addColorStop(0, 'rgba(0,0,0,0)');
+    g.addColorStop(feather / span, 'rgba(0,0,0,1)');
+    g.addColorStop(1 - feather / span, 'rgba(0,0,0,1)');
+    g.addColorStop(1, 'rgba(0,0,0,0)');
+    c.setTransform(1, 0, 0, 1, 0, 0);
+    c.fillStyle = g;
+    c.fillRect(0, 0, W, H);
+    c.globalCompositeOperation = 'source-over';
     out.drawImage(this.sharp, 0, 0);
 
-    // Name tags stay crisp wherever they sit, nudged up so none overlap.
-    const placed: { x: number; y: number }[] = [];
-    for (const t of tags.slice().sort((a, b) => b.y - a.y)) {
-      for (let i = 0; i < 6 && placed.some((p) => Math.abs(p.x - t.x) < 110 * dpr && Math.abs(p.y - t.y) < 15 * dpr); i++) t.y -= 15 * dpr;
-      placed.push(t);
-    }
+    // Name tags stay crisp wherever they sit.
     out.textAlign = 'center';
     out.textBaseline = 'alphabetic';
     for (const t of tags) {
@@ -504,7 +396,7 @@ export class Renderer {
     // A miniature's vignette, and the shutter flash of a photo finish.
     const v = out.createRadialGradient(W / 2, H * 0.55, Math.min(W, H) * 0.35, W / 2, H * 0.55, Math.max(W, H) * 0.8);
     v.addColorStop(0, 'rgba(20,20,30,0)');
-    v.addColorStop(1, 'rgba(40,25,10,0.22)');
+    v.addColorStop(1, 'rgba(20,20,30,0.10)');
     out.fillStyle = v;
     out.fillRect(0, 0, W, H);
     if (this.photo && !reducedMotion()) {

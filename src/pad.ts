@@ -14,11 +14,13 @@ import { FAINT, INK, LINE, MONO, PAPER, SANS, TEXT, drawPreview } from './render
 // won't do.
 
 export const PAD = 600;
-export const DRAW_TIME = 20; // seconds from the first stroke; then it submits itself
+export const DRAW_TIMES = [20, 30, 60]; // Quick, Normal, Careful: seconds from the first stroke
+export const DRAW_TIME = 30;
+const mmss = (s: number) => `${String(Math.floor(s / 60)).padStart(2, '0')}:${String(s % 60).padStart(2, '0')}`;
 export const THIN = 6, THICK = 11;
 
 export interface PadResult { strokes: Stroke[]; anatomy: Anatomy; name: string }
-export interface PadOptions { initial?: Stroke[]; name?: string; title?: string; action?: string }
+export interface PadOptions { initial?: Stroke[]; name?: string; title?: string; action?: string; time?: number }
 
 export class Pad {
   readonly el: HTMLElement;
@@ -38,6 +40,7 @@ export class Pad {
   private clock: HTMLElement;
   private nameInput: HTMLInputElement;
   private startedAt: number | null = null;
+  private time: number;
   private submitted = false;
   private live: { body: Body; anatomy: Anatomy; size: number; t: number; acc: number } | null = null;
   private course = flatCourse(1e9);
@@ -45,12 +48,13 @@ export class Pad {
   private last = 0;
 
   constructor(private onDone: (r: PadResult) => void, opts: PadOptions = {}) {
+    this.time = opts.time ?? DRAW_TIME;
     this.el = document.createElement('div');
     this.el.className = 'pad-screen';
     this.el.innerHTML = `
       <div class="sheet-head">
         <span class="mono label">${opts.title ?? 'DWG 01 — CREATURE'}</span>
-        <span class="mono clock" aria-label="Seconds left">00:${String(DRAW_TIME).padStart(2, '0')}</span>
+        <span class="mono clock" aria-label="Seconds left">${mmss(this.time)}</span>
       </div>
       <div class="timebar" aria-hidden="true"><i></i></div>
       <div class="sheet-wrap"><canvas class="pad" aria-label="Drawing sheet: draw your creature here"></canvas></div>
@@ -66,7 +70,7 @@ export class Pad {
         <button class="tool clear" aria-label="Clear"><svg viewBox="0 0 24 24"><path d="M6 6l12 12M18 6 6 18"/></svg></button>
       </div>
       <div class="done-row">
-        <input class="name" maxlength="22" placeholder="Name (optional)" autocomplete="off" spellcheck="false" aria-label="Creature name">
+        <input class="name" maxlength="22" placeholder="Name it" autocomplete="off" spellcheck="false" aria-label="Creature name">
         <button class="btn primary done">${opts.action ?? 'Race'} <span aria-hidden="true">→</span></button>
       </div>`;
     this.canvas = this.el.querySelector('.pad')!;
@@ -109,6 +113,7 @@ export class Pad {
     this.el.remove();
   }
 
+
   // Lets a room end the drawing phase for everyone.
   forceDone() { if (this.anatomy) this.done(); }
 
@@ -149,7 +154,7 @@ export class Pad {
   // Re-read the drawing and bring the new version to life in the strip below.
   private changed() {
     const a = (this.anatomy = analyze(this.strokes));
-    if (!this.strokes.length) this.readout.innerHTML = '<span class="kind muted">Nothing drawn yet</span>';
+    if (!this.strokes.length) this.readout.innerHTML = '<span class="kind muted">Waiting for ink</span>';
     else if (!a) this.readout.innerHTML = '<span class="kind muted">Draw a body</span>';
     else {
       const k = KINDS[a.kind], s = stats(a);
@@ -166,10 +171,10 @@ export class Pad {
   }
 
   private tickTimer(now: number) {
-    const left = this.startedAt === null ? DRAW_TIME : Math.max(0, DRAW_TIME - (now - this.startedAt) / 1000);
-    this.bar.style.transform = `scaleX(${left / DRAW_TIME})`;
+    const left = this.startedAt === null ? this.time : Math.max(0, this.time - (now - this.startedAt) / 1000);
+    this.bar.style.transform = `scaleX(${left / this.time})`;
     this.el.classList.toggle('low', left <= 5 && this.startedAt !== null);
-    this.clock.textContent = `00:${String(Math.ceil(left)).padStart(2, '0')}`;
+    this.clock.textContent = mmss(Math.ceil(left));
     if (left > 0 || this.current || this.submitted) return;
     if (this.anatomy) this.done();
   }
@@ -231,7 +236,7 @@ export class Pad {
       ctx.fillText('Draw a creature', PAD / 2, PAD / 2 - 8);
       ctx.fillStyle = TEXT;
       ctx.font = `500 15px ${SANS}`;
-      ctx.fillText('A body first. Then legs, wings, a tail — whatever it needs.', PAD / 2, PAD / 2 + 24);
+      ctx.fillText('Body first. Then legs, wings, whatever.', PAD / 2, PAD / 2 + 24);
     }
 
     // Pen ink, settling as it dries.
