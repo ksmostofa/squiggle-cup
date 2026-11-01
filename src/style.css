@@ -193,7 +193,7 @@ canvas.stage { display: block; width: 100%; height: 108px; }
 /* ---------- Race ---------- */
 .screen.race { position: fixed; inset: 0; width: 100%; min-height: 0; padding: 0; background: var(--desk); }
 .screen.race::before { display: none; }
-.race canvas.stage { position: absolute; inset: 0; width: 100%; height: 100%; filter: saturate(1.2) contrast(1.06); }
+.race canvas.stage { position: absolute; inset: 0; width: 100%; height: 100%; filter: saturate(1.3) contrast(1.08) brightness(1.02); }
 .titleblock {
   position: absolute; z-index: 2; top: calc(12px + env(safe-area-inset-top)); left: 12px; right: 12px;
   display: grid; grid-template-columns: auto auto 1fr; border: 1px solid var(--ink); background: rgba(252, 252, 250, 0.94);
