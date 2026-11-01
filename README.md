@@ -21,6 +21,8 @@ The leaderboard (`server/board.ts`) re-races every posted drawing on the server,
 
 Every creature you race is kept under **My creatures** on that device, ready to race again or touch up. Esc (or the II button) pauses a solo race; in a room it offers to leave.
 
+Share previews use `public/og.png` and an 8 s loop, `public/og.mp4`; `node scripts/og.mjs <dev server URL>` remakes both (needs ffmpeg). The demo script lives at https://claude.ai/artifact/UDx3A7d7YPKNLKGjVXA3Gc.
+
 ## Development
 
 ```bash
@@ -37,7 +39,7 @@ npx playwright install chromium
 npm run test:browser
 ```
 
-To use an installed Chromium, set `PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH=/usr/bin/chromium`. To test a deployment, also set `PLAYTEST_URL` to its address. The browser suite uses three isolated sessions and real pointer input, checks matching results through three rematches, downloads both PNGs and checks host handoff. Locally it also checks that no creature or label overlaps another at phone, desktop and landscape sizes. It does not record video.
+To use an installed Chromium, set `PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH=/usr/bin/chromium`. To test a deployment, also set `PLAYTEST_URL` to its address. The browser suite uses three isolated sessions and real pointer input, checks matching results through three rematches, downloads both PNGs and checks host handoff. Locally it also checks that no creature or label overlaps another at phone, desktop and landscape sizes. It also checks that every screen's main buttons are in view without scrolling, that a long press opens no browser menu, and (`audit.spec.ts`) the house lineup, the one shared scale, the leaderboard, 1v1, My creatures and pause. It does not record video.
 
 `node scripts/run-ts.mjs scripts/tune.ts` recalibrates the shared ceiling and reports where beginners and house creatures land.
 

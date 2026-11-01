@@ -27,7 +27,9 @@ export const lowEnd = () => reducedMotion() || (navigator.hardwareConcurrency ??
 
 // ---------- Creatures ----------
 
-export interface Pose { body: Body; anatomy: Anatomy; size: number; t: number }
+// drop: metres the body is drawn below its true height (flight is drawn
+// compressed); dangling feet are lifted by as much, so they stay above the floor.
+export interface Pose { body: Body; anatomy: Anatomy; size: number; t: number; drop?: number }
 
 const paths = new WeakMap<Part, Path2D>();
 const partPath = (p: Part) => {
@@ -49,14 +51,14 @@ function posedParts(pose: Pose, visit: (p: Part, angle: number, stretch: number,
     if (p.kind === 'leg') {
       const leg = b.legs[legIdx++];
       if (leg) {
-        const dx = leg.foot[0] - b.x, dy = leg.foot[1] - b.y;
+        const dx = leg.foot[0] - b.x, dy = leg.foot[1] - b.y + (pose.drop ?? 0) * (leg.planted ? 0 : 1);
         const c = Math.cos(-b.th), sn = Math.sin(-b.th);
         const fx = cx + (c * dx - sn * dy) / size, fy = cy - (sn * dx + c * dy) / size;
         const rest = p.pts.reduce((f, q) => (d2(q, p.pivot) > d2(f, p.pivot) ? q : f), p.pivot);
         angle = Math.atan2(fy - p.pivot[1], fx - p.pivot[0]) - Math.atan2(rest[1] - p.pivot[1], rest[0] - p.pivot[0]);
-        stretch = Math.max(0.7, Math.min(1.15, leg.len / leg.L));
+        stretch = Math.max(0.3, Math.min(1.15, leg.len / leg.L));
       }
-    } else if (p.kind === 'wing') angle = -Math.sin(b.flap) * (0.18 + 0.62 * b.flapAmp) * (p.side || 1);
+    } else if (p.kind === 'wing') angle = -Math.sin(b.flap) * (0.14 + 0.36 * b.flapAmp) * (p.side || 1);
     else if (p.kind === 'wheel') { const wh = b.wheels[wheelIdx++]; if (wh) angle = b.roll / Math.max(0.01, wh.r); }
     else if (p.kind === 'tail') angle = Math.sin(t * 6 + p.pivot[0] * 0.05) * 0.14;
     const points = wave ? p.pts.map(([x, y]): Pt => {
@@ -155,7 +157,7 @@ const ALT = 0.12;
 export const shownHeight = (y: number, rest: number) => (y <= rest ? y : rest + (y - rest) * ALT);
 // The most any creature reaches above and below its ground line, in metres,
 // as drawn (checked over whole races of every template by test/sim.test.ts).
-export const REACH_UP = 1.25, REACH_DOWN = 0.16;
+export const REACH_UP = 1.25, REACH_DOWN = 0.09;
 const ease = (x: number) => 1 - (1 - Math.min(1, Math.max(0, x))) ** 3;
 
 interface Finish { who: number; place: number; time: number; at: number }
@@ -175,6 +177,7 @@ export class Renderer {
   private photo: { at: number; gap: number } | null = null;
   private filterOk = 'filter' in CanvasRenderingContext2D.prototype;
   W = 0; H = 0;
+  scale = 0; // px per metre every creature was last drawn at (for tests)
 
   constructor(private canvas: HTMLCanvasElement, private race: Race) {
     this.ctx = canvas.getContext('2d')!;
@@ -339,19 +342,19 @@ export class Renderer {
     // height is the creature's. Nothing about a pose, a wingbeat or the
     // camera changes the scale; only the canvas size does.
     const laneH = P(0, (N - 1) * LANE_Z)[1] - P(0, N * LANE_Z)[1];
-    const k = Math.max(1, (laneH - 4 * dpr) / (REACH_UP + REACH_DOWN));
+    const k = (this.scale = Math.max(1, (laneH - 4 * dpr) / (REACH_UP + REACH_DOWN)));
     const tags: { x: number; left: number; right: number; y: number; name: string; mine: boolean; idx: number; done: string | null }[] = [];
     const order = race.standings();
     let myTop = Infinity;
     for (let i = 0; i < N; i++) {
       const r = racers[i], b = r.body;
-      const pose = { body: b, anatomy: r.anatomy, size: r.s.size, t: race.time };
+      const y = shownHeight(b.y, r.restY);
+      const pose = { body: b, anatomy: r.anatomy, size: r.s.size, t: race.time, drop: b.y - y };
       const laneTop = P(0, (N - i) * LANE_Z)[1];
       const laneBottom = P(0, (N - 1 - i) * LANE_Z)[1];
       const gx = P(b.x, laneZ(i))[0];
       const gy = laneBottom - REACH_DOWN * k - 2 * dpr;
       if (gx < -3 * k || gx > W + 3 * k) continue;
-      const y = shownHeight(b.y, r.restY);
       shadow(c, gx, gy, b.length * 0.42 * k, b.length * 0.42 * k * 0.22, b.y + b.bottom);
       paintCreature(c, pose, gx, gy - y * k, k);
       myTop = Math.min(myTop, gy + (creatureBounds(pose).top - y) * k);
@@ -503,6 +506,7 @@ export function drawPreview(ctx: CanvasRenderingContext2D, W: number, H: number,
   if (pose) {
     const b = pose.body;
     shadow(ctx, sx(b.x), ground, b.length * 0.42 * k, b.length * 0.42 * k * 0.2, b.y + b.bottom);
-    paintCreature(ctx, pose, sx(b.x), ground - shownHeight(b.y, rest) * k, k);
+    const y = shownHeight(b.y, rest);
+    paintCreature(ctx, { ...pose, drop: b.y - y }, sx(b.x), ground - y * k, k);
   }
 }

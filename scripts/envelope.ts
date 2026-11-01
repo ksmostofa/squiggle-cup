@@ -1,7 +1,7 @@
 import { analyze } from '../src/analyze';
 import { canonical } from '../src/drawing';
 import { Race } from '../src/race';
-import { creatureBounds } from '../src/render';
+import { creatureBounds, shownHeight } from '../src/render';
 import { mulberry32 } from '../src/rng';
 import { FAMILIES, template } from '../src/templates';
 
@@ -17,8 +17,8 @@ for (const fam of FAMILIES) {
     const r = new Race([{ anatomy: a, name: '', kind: 'player' }]);
     while (!r.over) {
       r.step();
-      const p = r.racers[0], b = creatureBounds({ body: p.body, anatomy: p.anatomy, size: p.s.size, t: r.time });
-      const y = p.body.y <= p.restY ? p.body.y : p.restY + (p.body.y - p.restY) * ALT;
+      const p = r.racers[0], y = shownHeight(p.body.y, p.restY);
+      const b = creatureBounds({ body: p.body, anatomy: p.anatomy, size: p.s.size, t: r.time, drop: p.body.y - y });
       up = Math.max(up, y - b.top); down = Math.max(down, b.bottom - y);
       if (r.tick === 1) stand = Math.max(stand, p.body.y - b.top);
     }

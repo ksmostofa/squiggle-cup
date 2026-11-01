@@ -8,11 +8,12 @@ import { Lobby } from './index.mjs';
 export { Lobby };
 
 export class Board {
-  constructor(state) {
+  constructor(state, env) {
     this.handle = createBoard({
       load: async () => [...(await state.storage.list({ prefix: 'e:' })).values()],
       save: (e) => state.storage.put(`e:${e.id}`, e),
-    });
+      remove: (id) => state.storage.delete(`e:${id}`),
+    }, () => Date.now(), env.BOARD_ADMIN ?? '');
   }
 
   fetch(req) {

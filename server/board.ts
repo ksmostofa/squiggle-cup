@@ -6,6 +6,7 @@ import { RULES, SEASON, verify } from '../src/verify';
 // (worker/site.mjs); `npm run dev` runs it in memory (vite.config.ts).
 //   POST /api/board        { code, creature, creator }  → { entry, rank, total }
 //   GET  /api/board?kind=  → { rules, season, entries: [...ranked] }
+//   DELETE /api/board?id=  (header x-board-key: the admin key) → removes one entry, for moderation
 // Times are never taken from the client: the server races the drawing itself.
 
 export interface Entry {
@@ -13,7 +14,7 @@ export interface Entry {
   ms: number; score: number; rules: string; season: string; at: number;
 }
 export interface Ranked extends Entry { rank: number }
-export interface Store { load(): Promise<Entry[]>; save(e: Entry): Promise<void> }
+export interface Store { load(): Promise<Entry[]>; save(e: Entry): Promise<void>; remove(id: string): Promise<void> }
 
 const MAX_BODY = 32 * 1024;
 const PER_MINUTE = 12;
@@ -33,7 +34,8 @@ export function rank(entries: Entry[]): Ranked[] {
   return sorted.map((e, i) => { if (!i || sorted[i - 1].ms !== e.ms) r = i + 1; return { ...e, rank: r }; });
 }
 
-export function createBoard(store: Store, now = () => Date.now()) {
+// adminKey: needed to delete an entry; without one, nothing can be deleted.
+export function createBoard(store: Store, now = () => Date.now(), adminKey = '') {
   let cache: Map<string, Entry> | null = null;
   const recent = new Map<string, number[]>();
   const entries = async () => (cache ??= new Map((await store.load()).map((e) => [e.id, e])));
@@ -50,6 +52,14 @@ export function createBoard(store: Store, now = () => Date.now()) {
       const limit = Math.min(200, Math.max(1, Number(url.searchParams.get('limit')) || 100));
       const all = rank(await current(kind));
       return json({ rules: RULES, season: SEASON, total: all.length, entries: all.slice(0, limit) });
+    }
+    if (req.method === 'DELETE') {
+      if (!adminKey || req.headers.get('x-board-key') !== adminKey) return json({ error: 'Not allowed.' }, 403);
+      const id = url.searchParams.get('id') ?? '';
+      const all = await entries();
+      if (!all.delete(id)) return json({ error: 'No such entry.' }, 404);
+      await store.remove(id);
+      return json({ removed: id });
     }
     if (req.method !== 'POST') return json({ error: 'Method not allowed.' }, 405);
 
@@ -80,4 +90,4 @@ export function createBoard(store: Store, now = () => Date.now()) {
 }
 
 // In-memory store for the dev server and tests.
-export const memoryStore = (): Store => { const m: Entry[] = []; return { load: async () => m.slice(), save: async (e) => { m.push(e); } }; };
+export const memoryStore = (): Store => { let m: Entry[] = []; return { load: async () => m.slice(), save: async (e) => { m.push(e); }, remove: async (id) => { m = m.filter((e) => e.id !== id); } }; };

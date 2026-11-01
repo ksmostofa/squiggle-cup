@@ -18,15 +18,20 @@ test('game document, branding and phone layout', async ({ page }) => {
   const response = await page.goto('/');
   expect(response?.headers()['content-type']).toContain('text/html');
   await expect(page.getByRole('heading', { name: 'Draw it. Race it.' })).toBeVisible();
+  // Home draws the logo inline so it can animate; other screens use the file.
   const logo = page.getByRole('img', { name: 'Squiggle Cup' });
   await expect(logo).toBeVisible();
-  expect(await logo.evaluate((img: HTMLImageElement) => img.complete && img.naturalWidth > 0)).toBe(true);
+  expect((await logo.boundingBox())!.width).toBeGreaterThan(100);
+  const file = await page.request.get('logo.svg');
+  expect(file.headers()['content-type']).toContain('image/svg');
   await page.setViewportSize({ width: 375, height: 812 });
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
   const image = await page.locator('meta[property="og:image"]').getAttribute('content');
   expect(image).toBeTruthy();
   const asset = await page.request.get(new URL(image!).pathname);
   expect(asset.headers()['content-type']).toContain('image/png');
+  const video = await page.locator('meta[property="og:video"]').getAttribute('content');
+  expect((await page.request.get(new URL(video!).pathname)).headers()['content-type']).toContain('video/mp4');
 });
 
 test('downloaded drawing has an opaque white background', async ({ page }) => {

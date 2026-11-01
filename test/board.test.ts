@@ -40,5 +40,15 @@ const statuses = [];
 for (const code of codes) statuses.push((await post(flood, { code }, 'spammer')).status);
 check(statuses.includes(429) && statuses.filter((s) => s === 200).length <= 12, 'one client is limited to twelve entries a minute');
 
+// Moderation: only the admin key deletes.
+{
+  const mod = createBoard(memoryStore(), () => Date.now(), 'secret');
+  const posted = await post(mod, { code: codeOf(strokes, 'Rex'), creature: 'Rex' });
+  const del = (key: string) => mod(new Request(`http://x/api/board?id=${posted.body.entry.id}`, { method: 'DELETE', headers: { 'x-board-key': key } }));
+  check((await del('guess')).status === 403 && (await get(mod)).total === 1, 'a wrong key deletes nothing');
+  check((await del('secret')).status === 200 && (await get(mod)).total === 0, 'the admin key removes an entry');
+  check((await b(new Request('http://x/api/board?id=x', { method: 'DELETE' }))).status === 403, 'without a key set, nothing can be deleted');
+}
+
 if (failed) { console.log(`${failed} failed`); process.exit(1); }
 console.log('all passed');

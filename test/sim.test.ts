@@ -200,8 +200,8 @@ function watch(entries: Entry[], seed: number) {
     let up = 0, down = 0;
     while (!r.over) {
       r.step();
-      const p = r.racers[0], b = creatureBounds({ body: p.body, anatomy: p.anatomy, size: p.s.size, t: r.time });
-      const y = shownHeight(p.body.y, p.restY);
+      const p = r.racers[0], y = shownHeight(p.body.y, p.restY);
+      const b = creatureBounds({ body: p.body, anatomy: p.anatomy, size: p.s.size, t: r.time, drop: p.body.y - y });
       up = Math.max(up, y - b.top); down = Math.max(down, b.bottom - y);
     }
     if (up > REACH_UP || down > REACH_DOWN) over.push(`${fam} ${i}: ${up.toFixed(2)} up, ${down.toFixed(2)} down`);

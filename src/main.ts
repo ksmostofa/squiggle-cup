@@ -13,9 +13,11 @@ import { type Cast, type Entrant, Room } from './net';
 import { PLACINGS, fact, formalName } from './names';
 import { DRAW_TIME, DRAW_TIMES, Pad, type PadResult } from './pad';
 import { Race, type Racer } from './race';
-import { Renderer } from './render';
+import { Renderer, drawPreview, reducedMotion } from './render';
+import { LIVE_LOGO } from './logo';
+import { RacePreview } from './preview';
 import { mulberry32 } from './rng';
-import { FAMILIES, FAMILY_NAMES, lineup, template } from './templates';
+import { FAMILIES, FAMILY_NAMES, type Family, lineup, template } from './templates';
 
 // Flow: home → (room lobby) → everyone draws at once → the race runs itself,
 // players tap to their creature's beat → results → rematch / redraw / share.
@@ -98,8 +100,8 @@ function screen(cls: string, html = ''): HTMLElement {
   return el;
 }
 
-const masthead = (right = '') => `<header class="masthead">
-  <button class="mark home-link" aria-label="Home"><img src="./logo.svg" alt="Squiggle Cup" width="130" height="35"></button>
+const masthead = (right = '', live = false) => `<header class="masthead">
+  <button class="mark home-link" aria-label="Home">${live ? LIVE_LOGO : '<img src="./logo.svg" alt="Squiggle Cup" width="130" height="35">'}</button>
   <span class="mono right">${right}</span>
   <button class="mono sound" aria-label="Sound">${isMuted() ? 'SOUND OFF' : 'SOUND ON'}</button>
 </header>`;
@@ -115,10 +117,11 @@ function leaveRoom() { room?.leave(); room = null; }
 // ---------- Home ----------
 
 function home(error = '') {
-  const el = screen('home', `${masthead('NO. 01 — STRAIGHT')}
+  const el = screen('home', `${masthead('NO. 01 — STRAIGHT', true)}
     <section class="hero">
       <h1>Draw it.<br><span>Race it.</span></h1>
       <p class="lede">Legs run. Wings flap. Blobs ooze. No luck.</p>
+      <div class="hero-strip"><canvas class="stage" aria-hidden="true"></canvas><p class="strip-label mono"></p></div>
     </section>
     <section class="panel">
       <label class="field"><span class="mono">Your name</span><input class="pname" maxlength="22" autocomplete="nickname" placeholder="Your name" value="${esc(store.get('sc:name'))}"></label>
@@ -137,6 +140,7 @@ function home(error = '') {
     <footer class="foot mono"><span>DWG 01</span><span>NO LUCK</span><span>40 000 MM</span></footer>`);
   wire(el);
   wireTime(el);
+  heroStrip(el);
   const nameIn = el.querySelector<HTMLInputElement>('.pname')!;
   const name = () => { const n = nameIn.value.trim().slice(0, 22); store.set('sc:name', n); return n; };
   el.querySelector('.solo')!.addEventListener('click', () => { unlock(); sfx.click(); name(); game = newSeed(); drawScreen({ kind: 'solo' }); });
@@ -152,6 +156,35 @@ function home(error = '') {
 }
 
 const roomInHash = () => /[#&]room=([A-Za-z]{4})/.exec(location.hash)?.[1]?.toUpperCase() ?? null;
+
+// The home strip: house creatures running on the sheet, one lap each, by
+// the same engine as the race (a new family every lap).
+function heroStrip(el: HTMLElement) {
+  const canvas = el.querySelector<HTMLCanvasElement>('.hero-strip canvas')!;
+  const label = el.querySelector<HTMLElement>('.strip-label')!;
+  const ctx = canvas.getContext('2d')!;
+  let lap = Math.floor(Math.random() * FAMILIES.length), live: RacePreview, camX = 0, last = performance.now(), raf = 0;
+  const next = () => {
+    const fam = FAMILIES[lap++ % FAMILIES.length];
+    live = new RacePreview(analyze(canonical(template(mulberry32(lap * 977), fam, 0.8).strokes))!);
+    label.textContent = `${FAMILY_NAMES[fam].toUpperCase()} · ${KINDS[live.race.playerRacer!.anatomy.kind].label.toUpperCase()}`;
+    camX = 0;
+  };
+  next();
+  const frame = (now: number) => {
+    const dt = Math.min(0.1, (now - last) / 1000);
+    last = now;
+    if (!reducedMotion() && live.advance(dt)) next();
+    const r = live.race.playerRacer!;
+    camX += (r.x - camX) * Math.min(1, dt * 4);
+    const dpr = Math.min(2, devicePixelRatio || 1), w = Math.round(canvas.clientWidth * dpr), h = Math.round(canvas.clientHeight * dpr);
+    if (canvas.width !== w || canvas.height !== h) { canvas.width = w; canvas.height = h; }
+    drawPreview(ctx, w, h, { body: r.body, anatomy: r.anatomy, size: r.s.size, t: live.race.time }, r.restY, camX, dpr);
+    raf = requestAnimationFrame(frame);
+  };
+  raf = requestAnimationFrame(frame);
+  stopRace = () => cancelAnimationFrame(raf);
+}
 
 // ---------- Rooms ----------
 
@@ -546,11 +579,10 @@ function keep(strokes: Stroke[], name: string) {
 function stable() {
   const el = screen('board stable', `${masthead('MY CREATURES')}
     <section class="board-head">
-      <h1>My creatures</h1>
+      <div class="board-title"><h1>My creatures</h1><button class="btn primary draw-one">Draw a new one <span aria-hidden="true">→</span></button></div>
       <p class="lede">Every creature you race is kept here, on this device. Race one again, or touch it up first.</p>
     </section>
-    <ol class="table board-rows"></ol>
-    <div class="actions"><button class="btn primary draw-one">Draw a new one <span aria-hidden="true">→</span></button></div>`);
+    <ol class="table board-rows"></ol>`);
   wire(el);
   el.querySelector('.draw-one')!.addEventListener('click', () => { sfx.click(); game = newSeed(); drawScreen({ kind: 'solo' }); });
   const rows = el.querySelector('.board-rows')!;
@@ -585,7 +617,7 @@ const BOARD_KINDS: Kind[] = ['quadruped', 'biped', 'centipede', 'hopper', 'flyer
 async function leaderboard(kind?: Kind, highlight?: string) {
   const el = screen('board', `${masthead('LEADERBOARD')}
     <section class="board-head">
-      <h1>Fastest creatures</h1>
+      <div class="board-title"><h1>Fastest creatures</h1><button class="btn primary draw-one">Draw one <span aria-hidden="true">→</span></button></div>
       <p class="lede">Every time is raced again by the server. Equal times share a place.</p>
       <nav class="tabs mono" aria-label="Creature type">
         <button data-k="" class="${kind ? '' : 'on'}">All</button>
@@ -593,8 +625,7 @@ async function leaderboard(kind?: Kind, highlight?: string) {
       </nav>
     </section>
     <ol class="table board-rows" aria-live="polite"><li class="muted mono">Loading…</li></ol>
-    <p class="foot-note mono"></p>
-    <div class="actions"><button class="btn primary draw-one">Draw one <span aria-hidden="true">→</span></button></div>`);
+    <p class="foot-note mono"></p>`);
   wire(el);
   el.querySelectorAll<HTMLButtonElement>('.tabs button').forEach((b) => b.addEventListener('click', () => { sfx.click(); leaderboard((b.dataset.k || undefined) as Kind | undefined); }));
   el.querySelector('.draw-one')!.addEventListener('click', () => { sfx.click(); game = newSeed(); drawScreen({ kind: 'solo' }); });
@@ -664,13 +695,19 @@ function gallery() {
 
 // ---------- Boot ----------
 
+// No browser menu on a long press or right click (copy, inspect, save image)
+// over the game; text fields keep theirs for paste.
+addEventListener('contextmenu', (e) => { if (!(e.target as HTMLElement).closest?.('input, textarea')) e.preventDefault(); });
+
 const params = new URLSearchParams(location.search);
 const demo = params.get('demo');
 const shared = readShared();
 if (demo) {
   // Screenshot entry points: ?demo=draw|race|results|lobby[&kind=flyer][&t=6]
   const kind = (params.get('kind') ?? 'quadruped') as Kind;
-  const strokes = canonical(rivalDrawing(mulberry32(5), INKS, kind));
+  // &family=dog draws "your" creature from a house family instead.
+  const family = params.get('family') as Family | null;
+  const strokes = canonical(family && FAMILIES.includes(family) ? template(mulberry32(5), family, 0.95).strokes : rivalDrawing(mulberry32(5), INKS, kind));
   const a = analyze(strokes)!;
   me = { strokes, name: params.get('name') ?? 'Your Creature' };
   const mine: Contender = { id: 'me', name: me.name, strokes, anatomy: a };
