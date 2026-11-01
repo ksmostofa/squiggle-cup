@@ -75,11 +75,24 @@ export function googlyEye(ctx: CanvasRenderingContext2D, x: number, y: number, r
   ctx.restore();
 }
 
-// A whole drawing in pad pixels, used for thumbnails on the results screen.
-export function drawDrawing(ctx: CanvasRenderingContext2D, strokes: Stroke[], anatomy: Anatomy | null, edge = 6) {
-  if (anatomy?.body.closed) fillWash(ctx, anatomy.body.pts, anatomy.body.color);
-  paintInk(ctx, strokes.map((s) => ({ path: strokePath(s.pts, s.w, s), color: s.color })), edge);
-  for (const e of anatomy?.eyes ?? []) googlyEye(ctx, e.c[0], e.c[1], e.r, e.r * 0.3, 0);
+// A whole drawing in pad pixels as cave pigment, used for thumbnails.
+export function drawDrawing(ctx: CanvasRenderingContext2D, strokes: Stroke[], anatomy: Anatomy | null) {
+  for (const s of strokes) {
+    const path = strokePath(s.pts, s.w, s);
+    ctx.globalAlpha = 0.22;
+    ctx.strokeStyle = s.color;
+    ctx.lineWidth = 8;
+    ctx.lineJoin = 'round';
+    ctx.stroke(path);
+    ctx.globalAlpha = 0.92;
+    ctx.fillStyle = s.color;
+    ctx.fill(path);
+  }
+  ctx.globalAlpha = 1;
+  for (const e of anatomy?.eyes ?? []) {
+    ctx.fillStyle = '#1d1a19';
+    ctx.beginPath(); ctx.arc(e.c[0], e.c[1], Math.max(5, e.r * 0.55), 0, Math.PI * 2); ctx.fill();
+  }
 }
 
 export function thumb(strokes: Stroke[], anatomy: Anatomy | null, size = 120): HTMLCanvasElement {

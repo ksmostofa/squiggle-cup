@@ -1,18 +1,17 @@
 {
   "handoff": {
     "updated": "2026-11-01",
-    "summary": "M0 prototype is playable: draw → wake-up/countdown → Best in Show race vs 3 bots → results with awards, judges and a dare link. `npm run dev` to play, `npm test` for the headless sim tests (encoding, determinism, 12-race bot fuzz). `?demo=race` / `?demo=results` autopilot a creature for screenshots.",
+    "summary": "Direction changed with the user: Ochre (cave) venue only; you paint a creature and the race runs itself (no tapping, no obstacles). New deterministic creature physics in src/body.ts (no Rapier): damped leg support with planted-foot stepping, wing lift by area, rolling, belly-scale slithering. Drawing reader (src/analyze.ts) classifies 9 kinds. Cave rock-art renderer (src/render.ts), paint-on-the-wall draw screen with a live physics preview (src/pad.ts), dawn results. npm test: all 8 rival kinds finish, 0 falls, deterministic.",
     "next": [
-      "Playtest the laugh test (PRD §22) with 5 strangers",
-      "Decide whether leap dominance is OK (see open), then tune",
-      "Lazy-load Rapier so the draw screen meets the 120 KB budget",
-      "Handler and leash, funniest-fail replay (M1)"
+      "User review of movement quality in the browser; tune gaits from their feedback",
+      "Multiplayer rooms: share drawings + seed, every client simulates the same race (user asked for this)",
+      "Realistic rock-art pass on creatures (engraved option, better pigment texture)",
+      "Balance: snakes and jellies (~55 s) trail flyers and runners (~30 s)"
     ],
     "open": [
-      "Leap is most of the speed: on flat ground tapping alone gives ~0.8 m/s, tapping + a leap every 1–1.5 s gives ~2 m/s. Bots now hop on open ground so races land at p50 66 s. Shape matters less than leap rhythm; PRD §7 numbers unchanged (gathered in TUNE in src/creature.ts)",
-      "Legless and one-legged creatures are slow (median 106–119 s; most DNFs)",
-      "Bundle is 3.5 MB (Rapier WASM inlined) and loads up front; PRD §20.1 wants ≤120 KB first load",
-      "Cross-browser determinism not yet checked"
+      "PRD.md still describes tap/leap controls, Best in Show and Rapier; it no longer matches the agreed direction and needs a rewrite",
+      "Rapier dependency is unused (package.json) and can be removed",
+      "Cross-browser determinism not checked"
     ]
   },
   "statuses": {

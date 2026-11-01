@@ -1,15 +1,15 @@
 import { type Pt, rdp } from './geom';
-import { INPUT_TYPES, type InputEvent } from './race';
 
-// PRD §6.4. A creature (and optionally its run) packed into a few hundred bytes
-// of base64url, so a dare link needs no server.
+// PRD §6.4. A creature and its race seed packed into a few hundred bytes of
+// base64url, so a dare link needs no server. Races run themselves, so the
+// drawing and seed are all it takes to replay one exactly.
 
-const VERSION = 1;
+const VERSION = 2;
 const GRID = 3;          // pad pixels per stored unit; the 600 px pad fits in 0–200
 const MAX_NAME = 36;     // bytes of UTF-8
 
 export interface PackedStroke { pts: Pt[]; ink: number; thick: boolean }
-export interface Dare { venue: number; seed: number; name: string; strokes: PackedStroke[]; inputs: InputEvent[] }
+export interface Dare { venue: number; seed: number; name: string; strokes: PackedStroke[] }
 
 const q = (v: number) => Math.max(0, Math.min(200, Math.round(v / GRID)));
 
@@ -39,13 +39,6 @@ export function encode(d: Dare): string {
     for (let i = 1; i < s.pts.length; i++) {
       out.push((s.pts[i][0] - s.pts[i - 1][0]) & 255, (s.pts[i][1] - s.pts[i - 1][1]) & 255);
     }
-  }
-
-  varint(out, d.inputs.length);
-  let prev = 0;
-  for (const e of d.inputs) {
-    varint(out, ((e.tick - prev) << 2) | INPUT_TYPES.indexOf(e.type));
-    prev = e.tick;
   }
   return toB64(Uint8Array.from(out));
 }
@@ -77,17 +70,7 @@ export function decode(s: string): Dare | null {
       }
       strokes.push({ pts, ink: flags & 7, thick: (flags & 8) !== 0 });
     }
-    const inputs: InputEvent[] = [];
-    if (i < b.length) {
-      const nIn = readVarint(next);
-      let tick = 0;
-      for (let k = 0; k < nIn; k++) {
-        const v = readVarint(next);
-        tick += Math.floor(v / 4);
-        inputs.push({ tick, type: INPUT_TYPES[v & 3] ?? 'tap' });
-      }
-    }
-    return { venue, seed, name, strokes, inputs };
+    return { venue, seed, name, strokes };
   } catch {
     return null;
   }
@@ -115,17 +98,6 @@ function gridPoints(pts: Pt[]): Pt[] {
     out.push(g);
   }
   return out;
-}
-
-function varint(out: number[], v: number) {
-  while (v >= 128) { out.push((v & 127) | 128); v = Math.floor(v / 128); }
-  out.push(v);
-}
-
-function readVarint(next: () => number): number {
-  let v = 0, mul = 1, b: number;
-  do { b = next(); v += (b & 127) * mul; mul *= 128; } while (b & 128);
-  return v;
 }
 
 function toB64(b: Uint8Array): string {

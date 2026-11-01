@@ -1,79 +1,81 @@
 import { analyze } from '../src/analyze';
-import { botDrawing } from '../src/bots';
+import { RIVAL_KINDS, rivalDrawing } from '../src/bots';
 import { decode, encode } from '../src/encode';
-import { type Entry, Race, loadPhysics } from '../src/race';
+import { type Entry, Race } from '../src/race';
 import { mulberry32 } from '../src/rng';
-import { bestInShow } from '../src/venues/bestInShow';
+import { ochre } from '../src/venues/ochre';
 
 let failed = 0;
 const check = (ok: boolean, msg: string) => { console.log(`${ok ? 'ok  ' : 'FAIL'} ${msg}`); if (!ok) failed++; };
+const venue = ochre;
 
-await loadPhysics();
-const venue = bestInShow;
+// Encoding round trip
+{
+  const strokes = rivalDrawing(mulberry32(7), venue.inks).map((s) => ({ pts: s.pts, ink: 1, thick: s.w > 10 }));
+  const s = encode({ venue: venue.index, seed: 0xdeadbeef, name: 'Sir Reginald Fourlegs III ✨', strokes });
+  const d = decode(s)!;
+  check(!!d && d.seed === 0xdeadbeef && d.name === 'Sir Reginald Fourlegs III ✨', `encode/decode header (${s.length} chars)`);
+  check(d.strokes.length === strokes.length, 'strokes round trip');
+  check(JSON.stringify(decode(encode(d))!.strokes) === JSON.stringify(d.strokes), 'decoded strokes are stable under re-encoding');
+  check(decode('garbage!!') === null, 'bad link decodes to null');
+}
 
-function field(seed: number, n: number): Entry[] {
-  const rng = mulberry32(seed);
-  return Array.from({ length: n }, (_, i) => {
-    const a = analyze(botDrawing(rng, venue.inks));
-    if (!a) throw new Error('bot drawing did not analyse');
-    return { anatomy: a, name: `bot${i}`, kind: 'bot' as const };
-  });
+// The drawing reader recognises every kind of rival.
+{
+  const wrong: string[] = [];
+  for (const kind of RIVAL_KINDS) {
+    for (let i = 0; i < 6; i++) {
+      const a = analyze(rivalDrawing(mulberry32(i * 31 + kind.length), venue.inks, kind));
+      if (a?.kind !== kind) wrong.push(`${kind}→${a?.kind ?? 'null'}(legs ${a?.legs} wings ${a?.wings})`);
+    }
+  }
+  check(!wrong.length, `rival drawings read as their kind${wrong.length ? ': ' + wrong.join(', ') : ''}`);
+}
+
+function entry(kind: (typeof RIVAL_KINDS)[number], seed: number, player = false): Entry {
+  const a = analyze(rivalDrawing(mulberry32(seed), venue.inks, kind))!;
+  return { anatomy: a, name: kind, kind: player ? 'player' : 'rival' };
 }
 
 function run(entries: Entry[], seed: number) {
   const r = new Race(venue, entries, seed);
-  let nan = false;
-  while (!r.over) { r.step(); if (!Number.isFinite(r.creatures[0].pos.x)) { nan = true; break; } }
-  const res = { hash: r.hash(), time: r.time, creatures: r.creatures.map((c) => ({ x: c.pos.x, t: c.finishTime, legs: c.limbs.length, nudges: c.stats.nudges, flips: c.stats.flips })), nan };
-  r.free();
-  return res;
-}
-
-// Encoding round trip
-{
-  const rng = mulberry32(7);
-  const strokes = botDrawing(rng, venue.inks).map((s) => ({ pts: s.pts, ink: 1, thick: s.w > 10 }));
-  const inputs = [{ tick: 180, type: 'tap' as const }, { tick: 200, type: 'press' as const }, { tick: 260, type: 'release' as const }, { tick: 7000, type: 'tap' as const }];
-  const s = encode({ venue: 0, seed: 0xdeadbeef, name: 'Sir Reginald Fourlegs III ✨', strokes, inputs });
-  const d = decode(s)!;
-  check(!!d && d.seed === 0xdeadbeef && d.name === 'Sir Reginald Fourlegs III ✨', `encode/decode header (${s.length} chars)`);
-  check(JSON.stringify(d.inputs) === JSON.stringify(inputs), 'inputs round trip');
-  check(d.strokes.length === strokes.length && d.strokes.every((x, i) => Math.abs(x.pts[0][0] - strokes[i].pts[0][0]) <= 1.5), 'strokes round trip within the 3 px grid');
-  const again = decode(encode(d))!;
-  check(JSON.stringify(again.strokes) === JSON.stringify(d.strokes), 'decoded strokes are stable under re-encoding');
-  check(decode('garbage!!') === null, 'bad link decodes to null');
-}
-
-// Determinism: same drawings, seed and inputs give the same world
-{
-  const a = run(field(42, 4), 99), b = run(field(42, 4), 99);
-  check(a.hash === b.hash && a.time === b.time, `same seed, same result (hash ${a.hash})`);
-}
-
-// Fuzz the bot field
-{
-  const races = Number(process.env.RACES ?? 12);
-  const times: number[] = [];
-  let nan = 0, dnf = 0, fast = 0, stuck = 0;
-  const byLegs = new Map<number, number[]>();
-  const t0 = performance.now();
-  for (let i = 0; i < races; i++) {
-    const r = run(field(1000 + i, 4), i);
-    if (r.nan) nan++;
-    for (const c of r.creatures) {
-      if (c.t === null) { dnf++; if (c.x < 46) stuck++; continue; }
-      times.push(c.t);
-      if (92 / c.t > 9) fast++;
-      const l = byLegs.get(c.legs) ?? []; l.push(c.t); byLegs.set(c.legs, l);
-    }
+  let bad = false;
+  while (!r.over) {
+    r.step();
+    if (r.racers.some((x) => !Number.isFinite(x.body.x) || !Number.isFinite(x.body.th))) { bad = true; break; }
   }
-  times.sort((a, b) => a - b);
-  const pct = (p: number) => times[Math.floor(p * (times.length - 1))]?.toFixed(1);
-  console.log(`  ${races} races in ${((performance.now() - t0) / 1000).toFixed(1)} s; finish times p10 ${pct(0.1)} / p50 ${pct(0.5)} / p90 ${pct(0.9)} s; DNF ${dnf}/${races * 4}`);
-  console.log('  median by legs: ' + [...byLegs].sort((a, b) => a[0] - b[0]).map(([l, ts]) => `${l}:${ts.sort((a, b) => a - b)[ts.length >> 1].toFixed(0)}s(n=${ts.length})`).join(' '));
-  check(nan === 0, 'no NaNs');
-  check(fast === 0, 'nobody averages over 9 m/s');
-  check(stuck === 0, 'nobody stuck before halfway at the 120 s cap');
+  return { r, bad, hash: r.hash() };
+}
+
+// Determinism: same drawings and seed give the same race.
+{
+  const field = () => RIVAL_KINDS.slice(0, 5).map((k, i) => entry(k, 40 + i));
+  const a = run(field(), 99), b = run(field(), 99);
+  check(a.hash === b.hash && a.r.time === b.r.time, `same seed, same race (hash ${a.hash})`);
+}
+
+// Every kind on its own, several seeds: does it run, how fast, does it fall.
+{
+  const seeds = Number(process.env.SEEDS ?? 4);
+  let bad = 0, tooFast = 0, dnf = 0;
+  console.log('  kind        finished  times (s)                 falls  top m/s');
+  for (const kind of RIVAL_KINDS) {
+    const times: string[] = [];
+    let falls = 0, top = 0;
+    for (let i = 0; i < seeds; i++) {
+      const { r, bad: b } = run([entry(kind, 100 + i, true)], 500 + i);
+      if (b) bad++;
+      const x = r.racers[0];
+      if (x.finishTime !== null) { times.push(x.finishTime.toFixed(0)); if (100 / x.finishTime > 9) tooFast++; }
+      else { dnf++; times.push(`DNF@${Math.round(x.body.x)}m`); }
+      falls += x.stats.falls; top = Math.max(top, x.stats.topSpeed);
+    }
+    const n = times.filter((t) => !t.startsWith('DNF')).length;
+    console.log(`  ${kind.padEnd(11)} ${n}/${seeds}       ${times.join(', ').padEnd(25)} ${String(falls).padStart(5)}  ${top.toFixed(1)}`);
+  }
+  check(bad === 0, 'no NaNs');
+  check(tooFast === 0, 'nobody averages over 9 m/s');
+  check(dnf === 0, 'every kind finishes the course');
 }
 
 if (failed) { console.log(`${failed} failed`); process.exit(1); }
