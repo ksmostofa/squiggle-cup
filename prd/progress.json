@@ -1,6 +1,6 @@
 {
   "handoff": {
-    "updated": "2026-11-01",
+    "updated": "2026-11-02",
     "summary": "Live at https://squiggle-cup.ksmostofa576.workers.dev/. Current direction: the white architectural sheet, a straight 40 m race in five lanes; drawings decide movement, no race controls or luck. Fixed the game URL serving relay text by deploying static assets through a separate game Worker config. npm run deploy now checks the game HTML. Drawing PNGs have an opaque white background; result cards remain 1080x1350. Logo displayed and 1200x630 OG still added. Fixed host handoff on results, guest-only control visibility, stale screen refresh callbacks, and departed entrants appearing in rematches. npm test, npm run build and all three Playwright checks pass locally and against the live URL: three isolated browsers draw distinct creatures, agree on results, run three identical-time rematches, download PNGs, and finish another race after the host leaves. No demo or OG video created, per user request.",
     "next": [
       "Owner: run a three-person playtest on different devices/networks; automation used three isolated Chromium contexts on one machine",
