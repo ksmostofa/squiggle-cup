@@ -122,7 +122,10 @@ function shadow(ctx: CanvasRenderingContext2D, x: number, y: number, rx: number,
 // ---------- The race board ----------
 
 const LANE_Z = 1.25; // metres between lane lines
-const TILT = 0.32;   // how much the far lanes shrink: 1 / (1 + TILT)
+const TILT = 0.2;    // how much the far lanes shrink: 1 / (1 + TILT)
+// Creatures are drawn a bit under life size so each stays inside its own lane
+// instead of covering the one behind it.
+const CS = 0.62;
 const ease = (x: number) => 1 - (1 - Math.min(1, Math.max(0, x))) ** 3;
 
 interface Finish { who: number; place: number; time: number; at: number }
@@ -189,7 +192,7 @@ export class Renderer {
 
     // Projection of the sheet: X along the course, Z across it (0 = front edge).
     const Zmax = N * LANE_Z;
-    const yFront = H * (portrait ? 0.7 : 0.8), yBack = H * (portrait ? 0.4 : 0.36);
+    const yFront = H * (portrait ? 0.72 : 0.8), yBack = H * (portrait ? 0.36 : 0.3);
     const yH = (yBack * (1 + TILT) - yFront) / TILT;
     const s0 = W / this.viewW;
     const f = (Z: number) => 1 / (1 + (TILT * Z) / Zmax);
@@ -273,7 +276,7 @@ export class Renderer {
 
     // Metre marks along the front margin, in millimetres like a real drawing.
     for (let X = Math.ceil(vx0 / 5) * 5; X <= Math.min(vx1, FINISH); X += 5) {
-      if (X < 0) continue;
+      if (X <= 0 || X >= FINISH) continue; // START and FINISH are lettered instead
       line(P(X, Zf + 0.25), P(X, Zf + 0.5), '#8d939c', lw);
       label(X + 0.12, Zf + 0.62, String(X * 1000).replace(/\B(?=(\d{3})+$)/g, ' '), 0.2, 500, MONO, TEXT, 'left');
     }
@@ -287,7 +290,6 @@ export class Renderer {
       line(P(X, zd - 0.25), P(X, zd + 0.25), '#8d939c', lw);
       if (X > 0) label(X - 5, zd + 0.22, `${(X * 1000).toLocaleString('en').replace(/,/g, ' ')}`, 0.2, 500, MONO, TEXT);
     }
-    label(Math.min(Math.max(this.camX, 3), FINISH - 3), Zb - 0.62, 'SQUIGGLE CUP  ·  STRAIGHT  ·  40 000', 0.2, 600, MONO, '#9aa0a8');
 
     // Start line and lettering.
     line(P(0, 0), P(0, Zmax), INK, lw * 1.6);
@@ -314,7 +316,7 @@ export class Renderer {
     let myTop = Infinity;
     for (let i = 0; i < N; i++) {
       const r = racers[i], b = r.body, z = laneZ(i);
-      const k = s0 * f(z);
+      const k = s0 * f(z) * CS;
       const [gx, gy] = P(b.x, z);
       if (gx < -3 * k || gx > W + 3 * k) continue;
       const alt = b.y + b.bottom;
@@ -322,7 +324,8 @@ export class Renderer {
       paintCreature(c, { body: b, anatomy: r.anatomy, size: r.s.size, t: now / 1000 }, gx, gy - b.y * k, k);
       const top = gy - (b.y + b.height * 0.55 + 0.18) * k;
       if (r === me) myTop = top;
-      tags.push({ x: gx, y: top, name: r.name, mine: r === me, done: r.finishTime != null ? r.finishTime.toFixed(2) : null });
+      // Only your creature is named on the sheet; the standings name the rest.
+      if (r === me) tags.push({ x: gx, y: top, name: r.name, mine: true, done: null });
     }
 
     // Finish moments: a leader line and the time, drawn in at the line.
