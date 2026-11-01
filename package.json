@@ -11,13 +11,16 @@
     "relay:cf": "wrangler dev --local",
     "deploy": "bash scripts/deploy.sh",
     "prd": "node prd/build.mjs",
-    "test": "node scripts/run-ts.mjs test/sim.test.ts && node scripts/run-ts.mjs test/balance.test.ts"
+    "test": "node scripts/run-ts.mjs test/sim.test.ts && node scripts/run-ts.mjs test/balance.test.ts",
+    "test:browser": "playwright test"
   },
   "dependencies": {
     "perfect-freehand": "^1.2.3"
   },
   "devDependencies": {
+    "@playwright/test": "^1.64.1",
     "typescript": "^7.0.2",
-    "vite": "^8.3.5"
+    "vite": "^8.3.5",
+    "wrangler": "^4.156.0"
   }
 }

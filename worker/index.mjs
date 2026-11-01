@@ -25,6 +25,7 @@ export default {
   fetch(req, env) {
     const url = new URL(req.url);
     if (url.pathname === '/relay') return env.LOBBY.get(env.LOBBY.idFromName('lobby')).fetch(req);
+    if (env.ASSETS) return env.ASSETS.fetch(req);
     return new Response('Squiggle Cup relay. Connect a WebSocket to /relay.', { headers: { 'content-type': 'text/plain' } });
   },
 };

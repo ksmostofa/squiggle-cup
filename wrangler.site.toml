@@ -1,0 +1,17 @@
+# Game Worker. Keep this separate from wrangler.toml (the room relay).
+name = "squiggle-cup"
+main = "worker/index.mjs"
+compatibility_date = "2026-06-01"
+
+[assets]
+directory = "./dist"
+binding = "ASSETS"
+
+# Preserve the existing Worker's Durable Object and support same-origin rooms.
+[[durable_objects.bindings]]
+name = "LOBBY"
+class_name = "Lobby"
+
+[[migrations]]
+tag = "v1"
+new_sqlite_classes = ["Lobby"]

@@ -62,3 +62,33 @@
 {"t":"2026-11-01 10:52","kind":"progress","text":"— · Microinteractions: planned → in-progress"}
 {"t":"2026-11-01 10:52","kind":"progress","text":"— · Audio: planned → in-progress"}
 {"t":"2026-11-01 10:52","kind":"handoff","text":"Handoff updated"}
+{"t":"2026-11-01 14:52","kind":"progress","text":"H · GitHub repo + shared trmi project: planned → built"}
+{"t":"2026-11-01 14:52","kind":"progress","text":"H · Runnable entry point (index.html, src/main.ts): planned → verified"}
+{"t":"2026-11-01 14:52","kind":"progress","text":"H · Draw pad with ink meter: in-progress → verified"}
+{"t":"2026-11-01 14:52","kind":"progress","text":"H · Reading the drawing: built → verified"}
+{"t":"2026-11-01 14:52","kind":"progress","text":"H · Physics creature, locomotion, leap, upright: built → verified"}
+{"t":"2026-11-01 14:52","kind":"progress","text":"H · Best in Show course (simplified): planned → verified"}
+{"t":"2026-11-01 14:52","kind":"progress","text":"H · Race loop: countdown, finish, nudge, ranking: in-progress → verified"}
+{"t":"2026-11-01 14:52","kind":"progress","text":"H · Bot pilot for empty seats: planned → verified"}
+{"t":"2026-11-01 14:52","kind":"progress","text":"H · Canvas 2D renderer with googly eyes: in-progress → verified"}
+{"t":"2026-11-01 14:52","kind":"progress","text":"H · Results: podium, awards, comparison fact, rematch: planned → built"}
+{"t":"2026-11-01 14:52","kind":"progress","text":"H · Relay server (rooms by 4-letter code): planned → built"}
+{"t":"2026-11-01 14:52","kind":"progress","text":"H · Host-authoritative snapshots + guest inputs: planned → built"}
+{"t":"2026-11-01 14:52","kind":"progress","text":"H · Lobby, draw, reveal, race, results screens: planned → built"}
+{"t":"2026-11-01 14:52","kind":"progress","text":"H · Deployed public URL: planned → in-progress"}
+{"t":"2026-11-01 14:52","kind":"progress","text":"H · 3-player online playtest: planned → in-progress"}
+{"t":"2026-11-01 14:52","kind":"progress","text":"M0 · Drawing pad: built → verified"}
+{"t":"2026-11-01 14:52","kind":"progress","text":"M0 · Live drawing feedback: built → verified"}
+{"t":"2026-11-01 14:52","kind":"progress","text":"M1 · Result card: planned → built"}
+{"t":"2026-11-01 14:52","kind":"progress","text":"M4 · Share-page previews: planned → built"}
+{"t":"2026-11-01 14:52","kind":"progress","text":"M4 · Logo, icon, landing: planned → verified"}
+{"t":"2026-11-01 14:52","kind":"handoff","text":"Handoff updated"}
+{"t":"2026-11-01 15:00","kind":"progress","text":"H · Results: podium, awards, comparison fact, rematch: built → verified"}
+{"t":"2026-11-01 15:00","kind":"progress","text":"H · Relay server (rooms by 4-letter code): built → verified"}
+{"t":"2026-11-01 15:00","kind":"progress","text":"H · Host-authoritative snapshots + guest inputs: built → verified"}
+{"t":"2026-11-01 15:00","kind":"progress","text":"H · Lobby, draw, reveal, race, results screens: built → verified"}
+{"t":"2026-11-01 15:00","kind":"progress","text":"H · Deployed public URL: in-progress → verified"}
+{"t":"2026-11-01 15:00","kind":"progress","text":"H · 3-player online playtest: in-progress → verified"}
+{"t":"2026-11-01 15:00","kind":"progress","text":"M1 · Result card: built → verified"}
+{"t":"2026-11-01 15:00","kind":"progress","text":"M4 · Share-page previews: built → verified"}
+{"t":"2026-11-01 15:00","kind":"handoff","text":"Handoff updated"}

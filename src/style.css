@@ -17,6 +17,7 @@
 }
 
 * { box-sizing: border-box; }
+[hidden] { display: none !important; }
 html, body { margin: 0; height: 100%; }
 body {
   background: var(--desk);
@@ -68,6 +69,7 @@ button { cursor: pointer; }
 .masthead::after { content: ""; position: absolute; left: 0; right: 0; bottom: -1px; height: 1px; background: var(--ink); transform-origin: left; animation: draw-in 0.8s 0.1s var(--ease) both; }
 @keyframes draw-in { from { transform: scaleX(0); } to { transform: scaleX(1); } }
 .masthead .mark { font-weight: 600; background: none; border: 0; padding: 0; letter-spacing: 0.16em; }
+.masthead .mark img { display: block; width: 130px; height: 35px; }
 .masthead .right { margin-left: auto; color: var(--grey); text-transform: uppercase; }
 .masthead .sound { background: none; border: 0; padding: 6px 0 6px 12px; color: var(--grey); border-left: 1px solid var(--line); font-size: 10px; }
 

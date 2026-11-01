@@ -89,6 +89,7 @@ let stopRace: (() => void) | null = null;
 function screen(cls: string, html = ''): HTMLElement {
   stopRace?.(); stopRace = null;
   drawingPad?.destroy(); drawingPad = null;
+  refresh = null;
   app.replaceChildren();
   const el = document.createElement('main');
   el.className = `screen ${cls}`;
@@ -99,7 +100,7 @@ function screen(cls: string, html = ''): HTMLElement {
 }
 
 const masthead = (right = '') => `<header class="masthead">
-  <button class="mark mono home-link" aria-label="Home">SQUIGGLE CUP</button>
+  <button class="mark home-link" aria-label="Home"><img src="./logo.svg" alt="Squiggle Cup" width="130" height="35"></button>
   <span class="mono right">${right}</span>
   <button class="mono sound" aria-label="Sound">${isMuted() ? 'SOUND OFF' : 'SOUND ON'}</button>
 </header>`;
@@ -408,8 +409,6 @@ function results(race: Race, seed: number, cs: Contender[], mode: Mode, entrants
   const place = order.indexOf(subject);
   const timeOf = (r: Racer) => (r.finishTime !== null ? `${r.finishTime.toFixed(2)} s` : `${Math.max(0, r.x).toFixed(1)} m`);
   const k = KINDS[subject.anatomy.kind];
-  const host = mode.kind === 'room' && mode.room.isHost;
-  const guest = mode.kind === 'room' && !mode.room.isHost;
   const el = screen('results', `${masthead(`RESULTS — HEAT ${pad2(heat)}`)}
     <section class="hero-result">
       <div class="th-wrap"></div>
@@ -430,14 +429,22 @@ function results(race: Race, seed: number, cs: Contender[], mode: Mode, entrants
     <div class="actions">
       ${mode.kind === 'replay'
         ? '<button class="btn primary beat">Draw one to race them <span aria-hidden="true">→</span></button><button class="btn again">Watch again</button>'
-        : guest ? '<p class="wait mono">Host picks next</p>'
         : '<button class="btn primary again">Rematch</button><button class="btn redraw">Redraw</button>'}
+      ${mode.kind === 'room' ? '<p class="wait mono">Host picks next</p>' : ''}
       <button class="btn ghost share">Share race</button>
       <button class="btn ghost save-card">Save card</button>
     </div>
     <button class="linkish mono save-drawing">Save drawing</button>
     <p class="toast" role="status"></p>`);
   wire(el);
+  if (mode.kind === 'room') {
+    refresh = () => {
+      el.querySelector<HTMLButtonElement>('.again')!.hidden = !mode.room.isHost;
+      el.querySelector<HTMLButtonElement>('.redraw')!.hidden = !mode.room.isHost;
+      el.querySelector<HTMLElement>('.wait')!.hidden = mode.room.isHost;
+    };
+    refresh();
+  }
   el.querySelector('.th-wrap')!.appendChild(thumb(cs[subject.idx].strokes, 132));
   el.querySelectorAll<HTMLElement>('.mini').forEach((m) => m.appendChild(thumb(cs[Number(m.dataset.i)].strokes, 40)));
   if (!watching && place === 0) sfx.fanfare();
@@ -445,13 +452,15 @@ function results(race: Race, seed: number, cs: Contender[], mode: Mode, entrants
   const people = cs.filter((c) => !c.bot);
   el.querySelector('.again')?.addEventListener('click', () => {
     sfx.click();
-    if (mode.kind === 'room') { if (host && entrants) mode.room.cast({ k: 'race', round: round + 1, seed: newSeed(), entrants }); }
+    if (mode.kind === 'room') {
+      if (mode.room.isHost && entrants) mode.room.cast({ k: 'race', round: round + 1, seed: newSeed(), entrants: entrants.filter((e) => mode.room.players.some((p) => p.id === e.id)) });
+    }
     else if (mode.kind === 'replay') runRace(cs, seed, mode.sharer, mode, undefined, 0, taps);
     else { const s = newSeed(); runRace(field(people, s), s, 'me', mode); }
   });
   el.querySelector('.redraw')?.addEventListener('click', () => {
     sfx.click();
-    if (mode.kind === 'room') { if (host) mode.room.cast({ k: 'draw', round: round + 1, time: drawTime }); }
+    if (mode.kind === 'room') { if (mode.room.isHost) mode.room.cast({ k: 'draw', round: round + 1, time: drawTime }); }
     else drawScreen(mode, me?.strokes);
   });
   el.querySelector('.beat')?.addEventListener('click', () => { sfx.click(); if (mode.kind === 'replay') drawScreen(mode); });

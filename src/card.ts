@@ -4,7 +4,7 @@ import { thumb } from './ink';
 import { FAINT, INK, LINE, MONO, PAPER, SANS, TEXT } from './render';
 
 // Keepsakes: the placement card (the creature large on the white sheet with
-// its place and time, 1080×1350) and the bare drawing (transparent PNG).
+// its place and time, 1080×1350) and the drawing on opaque white.
 
 export interface CardInfo { strokes: Stroke[]; name: string; place: string; time: string; kind: string; win: boolean }
 
@@ -46,7 +46,16 @@ export function card(info: CardInfo): HTMLCanvasElement {
   return c;
 }
 
-export const drawingPng = (strokes: Stroke[]) => thumb(strokes, 512);
+export function drawingPng(strokes: Stroke[]): HTMLCanvasElement {
+  const canvas = thumb(strokes, 512);
+  const ctx = canvas.getContext('2d')!;
+  ctx.resetTransform();
+  ctx.globalCompositeOperation = 'destination-over';
+  ctx.fillStyle = '#fff';
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+  ctx.globalCompositeOperation = 'source-over';
+  return canvas;
+}
 
 // Share the image where the device can (phones), otherwise download it.
 export async function save(canvas: HTMLCanvasElement, filename: string) {

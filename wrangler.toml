@@ -1,5 +1,4 @@
-# Room relay (worker/index.mjs). The game itself deploys to Cloudflare Pages
-# as the project "squiggle-cup"; see `npm run deploy`.
+# Room relay. The game uses wrangler.site.toml; `npm run deploy` ships both.
 name = "squiggle-cup-relay"
 main = "worker/index.mjs"
 compatibility_date = "2026-06-01"

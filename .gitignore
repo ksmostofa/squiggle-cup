@@ -3,3 +3,7 @@ dist
 prd/index.html
 prd/.snapshot.json
 .wrangler/
+.claude/worktrees/
+.claude/settings.local.json
+test-results/
+playwright-report/
