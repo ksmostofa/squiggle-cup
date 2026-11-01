@@ -380,7 +380,12 @@ export class Renderer {
     c.globalCompositeOperation = 'source-over';
     out.drawImage(this.sharp, 0, 0);
 
-    // Name tags stay crisp wherever they sit.
+    // Name tags stay crisp wherever they sit, nudged up so none overlap.
+    const placed: { x: number; y: number }[] = [];
+    for (const t of tags.slice().sort((a, b) => b.y - a.y)) {
+      for (let i = 0; i < 6 && placed.some((p) => Math.abs(p.x - t.x) < 110 * dpr && Math.abs(p.y - t.y) < 15 * dpr); i++) t.y -= 15 * dpr;
+      placed.push(t);
+    }
     out.textAlign = 'center';
     out.textBaseline = 'alphabetic';
     for (const t of tags) {

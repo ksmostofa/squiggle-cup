@@ -160,9 +160,15 @@ export class Body {
       if (ct.d > 0) hits.push({ rx, ry, ct });
     }
     const share = 1 / Math.max(1, hits.length);
-    const kc = this.m * 6000 * share, cd = this.m * 140 * share, kf = this.m * 60 * share;
     for (const { rx, ry, ct } of hits) {
       contacts++;
+      // Gains scale with the mass this point actually moves: a contact far
+      // from the centre also spins the body, so it acts on less mass. Without
+      // this a long body touching only at its tips (a zigzag snake) overshoots
+      // every step and is flung into the air.
+      const arm = rx * ct.ny - ry * ct.nx;
+      const eff = share / (1 + (this.m * arm * arm) / this.I);
+      const kc = this.m * 6000 * eff, cd = this.m * 140 * eff, kf = this.m * 60 * eff;
       const pvx = this.vx - this.w * ry, pvy = this.vy + this.w * rx;
       const vn = pvx * ct.nx + pvy * ct.ny;
       const fn = Math.max(0, kc * ct.d - cd * vn);

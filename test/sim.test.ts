@@ -142,5 +142,23 @@ function watch(entries: Entry[], seed: number) {
   check(race(once) === race(twice), 'a dare link replays the identical race');
 }
 
+// ---------- Hand-drawn snakes stay on the floor ----------
+{
+  // Zigzags and S-curves touch the floor at only a few points far from the
+  // centre; they used to be flung into the air.
+  const sCurve = (amp: number) => [{ pts: Array.from({ length: 40 }, (_, j): [number, number] => [100 + j * 10, 300 + amp * Math.sin(j / 4)]), color: INKS[0], w: 6 }];
+  const snakes = { zigzag: strokes(NOT_WINGS['snake, long wavy line'].draw, 1), 'gentle S': sCurve(25), 'deep S': sCurve(70) };
+  const bad: string[] = [];
+  for (const [name, s] of Object.entries(snakes)) {
+    const a = analyze(s)!;
+    const r = new Race([{ anatomy: a, name, kind: 'player' }]);
+    let maxY = 0;
+    while (!r.over) { r.step(); maxY = Math.max(maxY, r.racers[0].body.y); }
+    const t = r.racers[0].finishTime ?? Infinity;
+    if (t < 13 || t > 18 || maxY > 0.3) bad.push(`${name} ${t.toFixed(2)} s, up to ${maxY.toFixed(2)} m`);
+  }
+  check(!bad.length, `hand-drawn snakes slither on the floor${bad.length ? ': ' + bad.join(', ') : ''}`);
+}
+
 if (failed) { console.log(`${failed} failed`); process.exit(1); }
 console.log('all passed');
