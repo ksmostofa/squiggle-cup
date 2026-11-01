@@ -4,7 +4,7 @@ import { type Pt, rdp } from './geom';
 // base64url, so a dare link needs no server. Races run themselves, so the
 // drawing and seed are all it takes to replay one exactly.
 
-const VERSION = 2;
+const VERSION = 3;       // 3: sheet inks (course.ts INKS)
 const GRID = 3;          // pad pixels per stored unit; the 600 px pad fits in 0–200
 const MAX_NAME = 36;     // bytes of UTF-8
 

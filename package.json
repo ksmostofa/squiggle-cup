@@ -4,14 +4,14 @@
   "version": "0.1.0",
   "type": "module",
   "scripts": {
-    "dev": "vite",
+    "dev": "vite --host",
     "build": "tsc --noEmit && vite build",
     "preview": "vite preview",
+    "relay": "node server/relay.mjs",
     "prd": "node prd/build.mjs",
-    "test": "node scripts/run-ts.mjs test/sim.test.ts"
+    "test": "node scripts/run-ts.mjs test/sim.test.ts && node scripts/run-ts.mjs test/balance.test.ts"
   },
   "dependencies": {
-    "@dimforge/rapier2d-deterministic-compat": "^0.21.0",
     "perfect-freehand": "^1.2.3"
   },
   "devDependencies": {

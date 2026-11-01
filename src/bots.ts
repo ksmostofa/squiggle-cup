@@ -36,8 +36,8 @@ function line(rng: Rng, a: Pt, b: Pt, bend = 0, n = 6): Pt[] {
 }
 
 export function rivalDrawing(rng: Rng, inks: string[], kind: Kind = pick(rng, RIVAL_KINDS)): Stroke[] {
-  const ink = pick(rng, inks.slice(0, 2).concat(inks[3]));
-  const w = rng() < 0.3 ? 14 : 7;
+  const ink = pick(rng, inks);
+  const w = rng() < 0.3 ? 12 : 7;
   const out: Stroke[] = [];
   const add = (pts: Pt[], width = w) => out.push({ pts, color: ink, w: width });
   const cx = 300, cy = range(rng, 240, 290);
@@ -64,8 +64,20 @@ export function rivalDrawing(rng: Rng, inks: string[], kind: Kind = pick(rng, RI
 
   if (kind === 'flyer') {
     const span = range(rng, 100, 140) * sc;
-    add(line(rng, [cx + rx * 0.25, cy - ry * 0.7], [cx + rx + span * 0.55, cy - ry - span * 0.5], -0.15), 7);
-    add(line(rng, [cx - rx * 0.25, cy - ry * 0.7], [cx - rx - span * 0.55, cy - ry - span * 0.5], 0.15), 7);
+    const style = pick(rng, ['flung', 'raised', 'loop', 'zigzag', 'single'] as const);
+    if (style === 'flung') {
+      add(line(rng, [cx + rx * 0.25, cy - ry * 0.7], [cx + rx + span * 0.55, cy - ry - span * 0.5], -0.15), 7);
+      add(line(rng, [cx - rx * 0.25, cy - ry * 0.7], [cx - rx - span * 0.55, cy - ry - span * 0.5], 0.15), 7);
+    } else if (style === 'raised' || style === 'single') {
+      add(line(rng, [cx - rx * 0.1, cy - ry * 0.85], [cx - rx * 0.5, cy - ry - span * 0.8], 0.18), 7);
+      if (style === 'raised') add(line(rng, [cx + rx * 0.15, cy - ry * 0.85], [cx + rx * 0.35, cy - ry - span * 0.75], -0.18), 7);
+    } else if (style === 'loop') {
+      add(blob(rng, cx - rx * 0.1, cy - ry - span * 0.3, span * 0.22, span * 0.38, 0.06), 7);
+    } else {
+      const pts: Pt[] = [];
+      for (let i = 0; i <= 6; i++) pts.push([cx - rx * 0.4 + (i * rx * 0.8) / 6 + range(rng, -2, 2), cy - ry * 0.8 - span * (i % 2 ? 0.55 : 0.15) + range(rng, -3, 3)]);
+      add(pts, 7);
+    }
   }
   if ((kind === 'quadruped' || kind === 'biped') && rng() < 0.6) {
     add(line(rng, [cx - rx + 4, cy], [cx - rx - range(rng, 40, 70) * sc, cy - range(rng, 20, 45) * sc], 0.12), 7);
@@ -73,7 +85,7 @@ export function rivalDrawing(rng: Rng, inks: string[], kind: Kind = pick(rng, RI
 
   const eyes = rng() < 0.3 ? 1 : 2;
   const ex = kind === 'worm' ? cx + rx * 0.7 : cx + rx * 0.4;
-  for (let e = 0; e < eyes; e++) out.push({ pts: [[ex + (e - (eyes - 1) / 2) * 16 * sc, cy - ry * 0.3]], color: '#1d1a19', w: 7 });
+  for (let e = 0; e < eyes; e++) out.push({ pts: [[ex + (e - (eyes - 1) / 2) * 16 * sc, cy - ry * 0.3]], color: ink, w: 7 });
 
   for (const st of out) for (const p of st.pts) { p[0] = clamp(p[0]); p[1] = clamp(p[1]); }
   return out;

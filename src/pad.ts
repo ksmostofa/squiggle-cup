@@ -1,21 +1,24 @@
 import { type Anatomy, type Stroke, analyze } from './analyze';
 import { sfx, unlock } from './audio';
 import { Body } from './body';
-import { KINDS, stats } from './creature';
+import { INKS, INK_NAMES, flatCourse } from './course';
+import { DT, KINDS, stats } from './creature';
 import { type Pt, dist } from './geom';
 import { strokePath } from './ink';
-import { flatCourse, paintCreature, wall } from './render';
-import type { Venue } from './venues/ochre';
+import { SUBSTEPS, pace } from './race';
+import { FAINT, INK, LINE, MONO, PAPER, SANS, TEXT, drawPreview } from './render';
 
-// PRD §6.1–6.2, Ochre edition. You paint straight onto the cave wall; the
-// strip below brings your painting to life as you go, using the same physics
-// it will race with.
+// The drawing sheet. You draw straight onto the same white sheet the race
+// runs on; the strip below brings the drawing to life as you go, with the
+// race's own physics, pace and settings, so it never shows anything the race
+// won't do.
 
 export const PAD = 600;
-export const DRAW_TIME = 20; // seconds, from the first stroke; then the drawing submits itself
-const THIN = 9, THICK = 16;
+export const DRAW_TIME = 20; // seconds from the first stroke; then it submits itself
+export const THIN = 6, THICK = 11;
 
 export interface PadResult { strokes: Stroke[]; anatomy: Anatomy; name: string }
+export interface PadOptions { initial?: Stroke[]; name?: string; title?: string; action?: string }
 
 export class Pad {
   readonly el: HTMLElement;
@@ -27,64 +30,63 @@ export class Pad {
   private ended = new WeakMap<Stroke, number>();
   private current: Stroke | null = null;
   private anatomy: Anatomy | null = null;
-  private color: string;
+  private color = INKS[0];
   private thick = false;
   private raf = 0;
-  private chip: HTMLElement;
-  private meter: HTMLElement;
+  private readout: HTMLElement;
+  private bar: HTMLElement;
   private clock: HTMLElement;
   private nameInput: HTMLInputElement;
   private startedAt: number | null = null;
   private submitted = false;
-  private nagged = false;
-  private live: { body: Body; anatomy: Anatomy; size: number } | null = null;
-  private course = flatCourse();
+  private live: { body: Body; anatomy: Anatomy; size: number; t: number; acc: number } | null = null;
+  private course = flatCourse(1e9);
+  private camX = 0;
   private last = 0;
 
-  constructor(venue: Venue, private onDone: (r: PadResult) => void, initial: Stroke[] = [], name = '') {
-    this.color = venue.inks[0];
+  constructor(private onDone: (r: PadResult) => void, opts: PadOptions = {}) {
     this.el = document.createElement('div');
     this.el.className = 'pad-screen';
     this.el.innerHTML = `
-      <div class="wall-wrap">
-        <canvas class="pad" aria-label="Cave wall: draw your creature here"></canvas>
-        <div class="timer"><div class="meter" aria-label="Time left"><div class="meter-fill"></div></div><span class="secs">${DRAW_TIME}</span></div>
+      <div class="sheet-head">
+        <span class="mono label">${opts.title ?? 'DWG 01 — CREATURE'}</span>
+        <span class="mono clock" aria-label="Seconds left">00:${String(DRAW_TIME).padStart(2, '0')}</span>
       </div>
-      <div class="alive">
+      <div class="timebar" aria-hidden="true"><i></i></div>
+      <div class="sheet-wrap"><canvas class="pad" aria-label="Drawing sheet: draw your creature here"></canvas></div>
+      <section class="preview" aria-label="Live preview">
         <canvas class="stage" aria-hidden="true"></canvas>
-        <div class="chip" role="status"></div>
-      </div>
+        <div class="readout" role="status"></div>
+      </section>
       <div class="tools">
-        <div class="pens">${venue.inks.map((c, i) => `<button class="pen${i === 0 ? ' on' : ''}" data-ink="${c}" style="--c:${c}" aria-label="Pigment ${i + 1}"></button>`).join('')}
-          <button class="width" aria-label="Brush width"><span></span></button>
-        </div>
-        <div class="edit">
-          <button class="icon undo" aria-label="Undo">↶</button>
-          <button class="icon clear" aria-label="Clear">✕</button>
-        </div>
+        <div class="inks" role="radiogroup" aria-label="Ink">${INKS.map((c, i) => `<button class="ink${i === 0 ? ' on' : ''}" data-ink="${c}" style="--c:${c}" role="radio" aria-checked="${i === 0}" aria-label="${INK_NAMES[i]}"></button>`).join('')}</div>
+        <button class="tool width" aria-label="Pen width" aria-pressed="false"><span class="nib"></span></button>
+        <span class="sep"></span>
+        <button class="tool undo" aria-label="Undo"><svg viewBox="0 0 24 24"><path d="M9 7 4 12l5 5M4 12h10a6 6 0 0 1 0 12h-2" transform="translate(0 -3)"/></svg></button>
+        <button class="tool clear" aria-label="Clear"><svg viewBox="0 0 24 24"><path d="M6 6l12 12M18 6 6 18"/></svg></button>
       </div>
       <div class="done-row">
-        <input class="name" maxlength="24" placeholder="Name it (optional)" autocomplete="off" spellcheck="false">
-        <button class="pebble primary done">Wake it</button>
+        <input class="name" maxlength="22" placeholder="Name (optional)" autocomplete="off" spellcheck="false" aria-label="Creature name">
+        <button class="btn primary done">${opts.action ?? 'Race'} <span aria-hidden="true">→</span></button>
       </div>`;
     this.canvas = this.el.querySelector('.pad')!;
     this.ctx = this.canvas.getContext('2d')!;
     this.stage = this.el.querySelector('.stage')!;
     this.sctx = this.stage.getContext('2d')!;
-    this.chip = this.el.querySelector('.chip')!;
-    this.meter = this.el.querySelector('.meter-fill')!;
-    this.clock = this.el.querySelector('.secs')!;
+    this.readout = this.el.querySelector('.readout')!;
+    this.bar = this.el.querySelector('.timebar i')!;
+    this.clock = this.el.querySelector('.clock')!;
     this.nameInput = this.el.querySelector('.name')!;
-    this.nameInput.value = name;
-    this.strokes = initial.map((s) => ({ ...s, pts: s.pts.map((p): Pt => [p[0], p[1]]) }));
+    this.nameInput.value = opts.name ?? '';
+    this.strokes = (opts.initial ?? []).map((s) => ({ ...s, pts: s.pts.map((p): Pt => [p[0], p[1]]) }));
 
-    this.el.querySelectorAll<HTMLButtonElement>('.pen').forEach((b) => b.addEventListener('click', () => {
+    this.el.querySelectorAll<HTMLButtonElement>('.ink').forEach((b) => b.addEventListener('click', () => {
       this.color = b.dataset.ink!;
-      this.el.querySelectorAll('.pen').forEach((x) => x.classList.toggle('on', x === b));
+      this.el.querySelectorAll('.ink').forEach((x) => { x.classList.toggle('on', x === b); x.setAttribute('aria-checked', String(x === b)); });
       sfx.click();
     }));
     const widthBtn = this.el.querySelector<HTMLButtonElement>('.width')!;
-    widthBtn.addEventListener('click', () => { this.thick = !this.thick; widthBtn.classList.toggle('thick', this.thick); sfx.click(); });
+    widthBtn.addEventListener('click', () => { this.thick = !this.thick; widthBtn.classList.toggle('thick', this.thick); widthBtn.setAttribute('aria-pressed', String(this.thick)); sfx.click(); });
     this.el.querySelector('.undo')!.addEventListener('click', () => { this.strokes.pop(); this.changed(); sfx.click(); });
     this.el.querySelector('.clear')!.addEventListener('click', () => { this.strokes = []; this.changed(); sfx.click(); });
     this.el.querySelector('.done')!.addEventListener('click', () => this.done());
@@ -107,12 +109,16 @@ export class Pad {
     this.el.remove();
   }
 
+  // Lets a room end the drawing phase for everyone.
+  forceDone() { if (this.anatomy) this.done(); }
+
   private toPad(e: PointerEvent): Pt {
     const r = this.canvas.getBoundingClientRect();
     return [((e.clientX - r.left) / r.width) * PAD, ((e.clientY - r.top) / r.height) * PAD];
   }
 
   private down(e: PointerEvent) {
+    if (this.submitted) return;
     unlock();
     this.startedAt ??= performance.now();
     this.canvas.setPointerCapture(e.pointerId);
@@ -133,7 +139,7 @@ export class Pad {
     this.strokes.push(this.current);
     this.ended.set(this.current, performance.now());
     this.current = null;
-    navigator.vibrate?.(8);
+    navigator.vibrate?.(6);
     const before = this.anatomy?.kind;
     this.changed();
     if (this.anatomy && this.anatomy.kind !== before) sfx.blink();
@@ -143,142 +149,123 @@ export class Pad {
   // Re-read the drawing and bring the new version to life in the strip below.
   private changed() {
     const a = (this.anatomy = analyze(this.strokes));
-    if (!this.strokes.length) this.chip.textContent = 'Paint a creature on the wall';
-    else if (!a) this.chip.textContent = 'Paint a body!';
+    if (!this.strokes.length) this.readout.innerHTML = '<span class="kind muted">Nothing drawn yet</span>';
+    else if (!a) this.readout.innerHTML = '<span class="kind muted">Draw a body</span>';
     else {
-      const k = KINDS[a.kind];
-      this.chip.innerHTML = `<b>${k.icon} ${k.label}</b> — ${k.verb} · <span>${k.blurb}</span>`;
+      const k = KINDS[a.kind], s = stats(a);
+      const q = Math.round(s.quality * 100);
+      this.readout.innerHTML = `<span class="kind">${k.label} — ${k.verb}</span><span class="form mono" title="How well its proportions suit its kind">FORM ${String(q).padStart(2, '0')}</span><p class="blurb">${k.blurb}</p>`;
     }
     if (a) {
       const s = stats(a);
       const body = new Body(a, s.size, { kind: a.kind, vTarget: s.vTarget });
-      body.place(this.live?.body.x ?? 0, this.course);
-      this.live = { body, anatomy: a, size: s.size };
+      body.place(0, this.course);
+      this.live = { body, anatomy: a, size: s.size, t: -0.6, acc: 0 };
+      this.camX = 0;
     } else this.live = null;
   }
 
   private tickTimer(now: number) {
     const left = this.startedAt === null ? DRAW_TIME : Math.max(0, DRAW_TIME - (now - this.startedAt) / 1000);
-    this.meter.style.transform = `scaleX(${left / DRAW_TIME})`;
-    this.meter.parentElement!.classList.toggle('low', left <= 5);
-    this.clock.textContent = String(Math.ceil(left));
+    this.bar.style.transform = `scaleX(${left / DRAW_TIME})`;
+    this.el.classList.toggle('low', left <= 5 && this.startedAt !== null);
+    this.clock.textContent = `00:${String(Math.ceil(left)).padStart(2, '0')}`;
     if (left > 0 || this.current || this.submitted) return;
     if (this.anatomy) this.done();
-    else if (!this.nagged) { this.nagged = true; this.flashChip('Time! Paint a body!'); }
-  }
-
-  private flashChip(text: string) {
-    this.chip.textContent = text;
-    this.chip.classList.remove('shake');
-    void this.chip.offsetWidth;
-    this.chip.classList.add('shake');
-    setTimeout(() => this.changed(), 1200);
   }
 
   private done() {
     unlock();
-    if (!this.anatomy) { this.flashChip('Paint a body!'); return; }
+    if (!this.anatomy) { this.readout.classList.remove('nudge'); void this.readout.offsetWidth; this.readout.classList.add('nudge'); return; }
     if (this.submitted) return;
     this.submitted = true;
+    this.el.classList.add('submitted');
     sfx.click();
-    this.onDone({ strokes: this.strokes, anatomy: this.anatomy, name: this.nameInput.value.trim().slice(0, 24) });
+    this.onDone({ strokes: this.strokes, anatomy: this.anatomy, name: this.nameInput.value.trim().slice(0, 22) });
   }
 
   private render(now: number) {
     const dt = Math.min(0.05, (now - (this.last || now)) / 1000);
     this.last = now;
     this.tickTimer(now);
-    this.renderWall(now);
-    this.renderStage(now, dt);
+    this.renderSheet(now);
+    this.renderStage(dt);
   }
 
-  private renderWall(now: number) {
+  private renderSheet(now: number) {
     const c = this.canvas, ctx = this.ctx;
     const dpr = Math.min(2, window.devicePixelRatio || 1);
     const size = Math.round(c.clientWidth * dpr);
+    if (!size) return;
     if (c.width !== size) c.width = c.height = size;
     const k = size / PAD;
     ctx.setTransform(k, 0, 0, k, 0, 0);
-    ctx.drawImage(wall(), 120, 40, 600, 600, 0, 0, PAD, PAD);
-    // Firelight on the wall, breathing.
-    const f = 1 + 0.03 * Math.sin(now / 170) + 0.02 * Math.sin(now / 53);
-    const g = ctx.createRadialGradient(PAD * 0.5, PAD * 0.55, 30, PAD * 0.5, PAD * 0.5, PAD * 0.75 * f);
-    g.addColorStop(0, 'rgba(255,179,71,0.16)');
-    g.addColorStop(0.6, 'rgba(40,22,12,0.15)');
-    g.addColorStop(1, 'rgba(18,10,6,0.75)');
-    ctx.fillStyle = g;
+    ctx.fillStyle = PAPER;
     ctx.fillRect(0, 0, PAD, PAD);
-
-    ctx.fillStyle = 'rgba(239,230,216,0.55)';
-    ctx.font = '600 20px Fraunces, Georgia, serif';
+    const px = 1 / k;
+    for (let i = 20; i < PAD; i += 20) {
+      ctx.fillStyle = i % 100 ? FAINT : '#e0e3e7';
+      ctx.fillRect(i, 0, px, PAD);
+      ctx.fillRect(0, i, PAD, px);
+    }
+    ctx.strokeStyle = '#8d939c'; ctx.lineWidth = px; ctx.strokeRect(12, 12, PAD - 24, PAD - 24);
+    ctx.strokeStyle = LINE; ctx.lineWidth = 0.8 * px; ctx.strokeRect(17, 17, PAD - 34, PAD - 34);
+    ctx.fillStyle = TEXT;
+    ctx.font = `500 11px ${MONO}`;
     ctx.textAlign = 'right';
-    ctx.fillText('it runs this way →', PAD - 24, 42);
+    ctx.fillText('RACES THIS WAY  →', PAD - 30, 38);
+    // A small title block, as on any sheet.
+    ctx.strokeStyle = LINE; ctx.lineWidth = px;
+    ctx.strokeRect(PAD - 186, PAD - 58, 169, 41);
+    ctx.fillRect(PAD - 186, PAD - 38, 169, px);
+    ctx.textAlign = 'left';
+    ctx.fillStyle = INK; ctx.font = `600 10px ${MONO}`;
+    ctx.fillText('SQUIGGLE CUP', PAD - 178, PAD - 44);
+    ctx.fillStyle = TEXT; ctx.font = `500 9px ${MONO}`;
+    ctx.fillText('SCALE  NTS      SHEET  A1', PAD - 178, PAD - 24);
+
     if (!this.strokes.length && !this.current) {
       ctx.textAlign = 'center';
-      ctx.fillStyle = 'rgba(239,230,216,0.5)';
-      ctx.font = 'italic 600 44px Fraunces, Georgia, serif';
-      ctx.fillText('Paint a creature.', PAD / 2, PAD / 2 - 6);
-      ctx.font = '500 19px "Instrument Sans", system-ui, sans-serif';
-      ctx.fillText('a body, some legs, wings if it flies', PAD / 2, PAD / 2 + 32);
+      ctx.fillStyle = INK;
+      ctx.font = `600 34px ${SANS}`;
+      ctx.fillText('Draw a creature', PAD / 2, PAD / 2 - 8);
+      ctx.fillStyle = TEXT;
+      ctx.font = `500 15px ${SANS}`;
+      ctx.fillText('A body first. Then legs, wings, a tail — whatever it needs.', PAD / 2, PAD / 2 + 24);
     }
 
-    // Pigment: a soft bleed into the stone, then the paint.
+    // Pen ink, settling as it dries.
     const all = this.current ? [...this.strokes, this.current] : this.strokes;
     for (const s of all) {
-      const path = strokePath(s.pts, s.w, s === this.current ? undefined : s, s !== this.current);
       const age = now - (this.ended.get(s) ?? now);
-      const wet = s === this.current ? 1 : Math.max(0, 1 - age / 400);
-      ctx.globalAlpha = 0.2 + 0.1 * wet;
-      ctx.strokeStyle = s.color;
-      ctx.lineWidth = 8;
-      ctx.lineJoin = 'round';
-      ctx.stroke(path);
-      ctx.globalAlpha = 0.86 + 0.1 * wet;
+      const wet = s === this.current ? 1 : Math.max(0, 1 - age / 650);
+      const path = strokePath(s.pts, s.w * (1 + 0.12 * wet), wet > 0 ? undefined : s, s !== this.current);
+      ctx.globalAlpha = 1 - 0.22 * wet;
       ctx.fillStyle = s.color;
       ctx.fill(path);
     }
     ctx.globalAlpha = 1;
-    for (const e of this.anatomy?.eyes ?? []) {
-      ctx.fillStyle = '#1d1a19';
-      ctx.beginPath(); ctx.arc(e.c[0], e.c[1], Math.max(5, e.r * 0.55), 0, Math.PI * 2); ctx.fill();
-    }
   }
 
-  // The living preview: the creature on a loop of cave floor.
-  private renderStage(now: number, dt: number) {
+  // The living preview: the race's physics and pace on one lane of the sheet.
+  private renderStage(dt: number) {
     const c = this.stage, ctx = this.sctx;
     const dpr = Math.min(2, window.devicePixelRatio || 1);
     const w = Math.round(c.clientWidth * dpr), h = Math.round(c.clientHeight * dpr);
+    if (!w || !h) return;
     if (c.width !== w || c.height !== h) { c.width = w; c.height = h; }
-    ctx.setTransform(1, 0, 0, 1, 0, 0);
-    const tex = wall();
-    const s = h / 1.9; // px per metre: about 1.9 m of height in view
     const live = this.live;
-    const camX = live ? live.body.x : 0;
-    const tw = tex.width * (s / 160);
-    const off = ((camX * s * 0.6) % tw + tw) % tw;
-    for (let x = -off; x < w; x += tw) ctx.drawImage(tex, x, 0, tw, tex.height * (s / 160));
-    const floor = h * 0.82;
-    ctx.fillStyle = '#4a3527';
-    ctx.fillRect(0, floor, w, h - floor);
-    ctx.fillStyle = 'rgba(240,220,190,0.35)';
-    ctx.fillRect(0, floor, w, 2 * dpr);
-    // Floor marks scroll by so you can see it move.
-    ctx.fillStyle = 'rgba(20,12,8,0.35)';
-    const step = 0.5 * s;
-    for (let x = -((camX * s) % step); x < w; x += step) ctx.fillRect(x, floor + 6 * dpr, 3 * dpr, 6 * dpr);
     if (live) {
-      const b = live.body;
-      for (let t = 0; t < dt; t += 1 / 240) b.step(1 / 240, this.course, 0.8);
-      if (b.x > 1e4) b.place(0, this.course);
-      paintCreature(ctx, { body: b, anatomy: live.anatomy, size: live.size, t: now / 1000 }, w * 0.45 + (b.x - camX) * s, floor - b.y * s, s);
+      live.acc += dt;
+      while (live.acc >= DT) {
+        live.acc -= DT;
+        const mult = live.t < 0 ? 0 : pace(null, live.anatomy.kind, live.t);
+        for (let i = 0; i < SUBSTEPS; i++) live.body.step(DT / SUBSTEPS, this.course, mult);
+        live.t += DT;
+      }
+      if (live.body.x > 14) { live.body = new Body(live.anatomy, live.size, { kind: live.anatomy.kind, vTarget: stats(live.anatomy).vTarget }); live.body.place(0, this.course); live.t = -0.6; this.camX = 0; }
+      this.camX += (live.body.x - this.camX) * Math.min(1, dt * 4);
     }
-    const g = ctx.createLinearGradient(0, 0, w, 0);
-    g.addColorStop(0, 'rgba(18,10,6,0.85)');
-    g.addColorStop(0.2, 'rgba(18,10,6,0)');
-    g.addColorStop(0.8, 'rgba(18,10,6,0)');
-    g.addColorStop(1, 'rgba(18,10,6,0.85)');
-    ctx.fillStyle = g;
-    ctx.fillRect(0, 0, w, h);
+    drawPreview(ctx, w, h, live ? { body: live.body, anatomy: live.anatomy, size: live.size, t: performance.now() / 1000 } : null, this.camX, dpr);
   }
 }

@@ -1,222 +1,438 @@
 import './style.css';
-import { type Anatomy, type Stroke, analyze } from './analyze';
+import { type Anatomy, type Kind, type Stroke, analyze } from './analyze';
 import { isMuted, setMuted, sfx, unlock } from './audio';
 import { RIVAL_KINDS, rivalDrawing } from './bots';
-import { Commentator, PLACINGS, awards, fact, formalName } from './comedy';
+import { INKS, LANES } from './course';
 import { DT, KINDS } from './creature';
 import { type Dare, decode, encode } from './encode';
 import { thumb } from './ink';
-import { Pad, type PadResult } from './pad';
-import { type Entry, Race, type Racer } from './race';
+import { type Cast, type Entrant, Room } from './net';
+import { PLACINGS, fact, formalName } from './names';
+import { Pad, type PadResult, THICK, THIN } from './pad';
+import { Race, type Racer } from './race';
 import { Renderer } from './render';
-import { mulberry32, pick } from './rng';
-import { ochre } from './venues/ochre';
+import { mulberry32 } from './rng';
 
-// Flow: paint on the cave wall → it wakes → the race runs itself → results →
-// race again / paint another / dare a friend.
+// Flow: home → (room lobby) → everyone draws at once → the race runs itself
+// → results → rematch / redraw / share. Races are deterministic, so a room
+// shares only drawings and a seed and every device runs the same race.
 
-const venue = ochre;
 const app = document.getElementById('app')!;
-
-interface Me { strokes: Stroke[]; anatomy: Anatomy; name: string }
-let me: Me | null = null;
-const dare: (Dare & { anatomy: Anatomy }) | null = readDare();
+const esc = (s: string) => s.replace(/[&<>"']/g, (c) => `&#${c.charCodeAt(0)};`);
+const pad2 = (n: number) => String(n).padStart(2, '0');
 
 const store = {
-  get<T>(k: string): T | null { try { const v = localStorage.getItem(k); return v ? (JSON.parse(v) as T) : null; } catch { return null; } },
-  set(k: string, v: unknown) { try { localStorage.setItem(k, JSON.stringify(v)); } catch { /* storage may be blocked */ } },
+  get(k: string): string { try { return localStorage.getItem(k) ?? ''; } catch { return ''; } },
+  set(k: string, v: string) { try { localStorage.setItem(k, v); } catch { /* storage may be blocked */ } },
 };
 
-function readDare() {
-  const m = /[#&]d=([A-Za-z0-9_-]+)/.exec(location.hash);
-  const d = m ? decode(m[1]) : null;
-  const anatomy = d ? analyze(unpack(d.strokes)) : null;
-  return d && anatomy ? { ...d, anatomy } : null;
+// ---------- Drawings travel as dare codes ----------
+
+interface Contender { id: string; name: string; strokes: Stroke[]; anatomy: Anatomy; bot?: boolean }
+
+const pack = (strokes: Stroke[]): Dare['strokes'] => strokes.map((s) => ({ pts: s.pts, ink: Math.max(0, INKS.indexOf(s.color)), thick: s.w > (THIN + THICK) / 2 }));
+const unpack = (ps: Dare['strokes']): Stroke[] => ps.map((s) => ({ pts: s.pts, color: INKS[s.ink] ?? INKS[0], w: s.thick ? THICK : THIN }));
+const codeOf = (strokes: Stroke[], name: string) => encode({ venue: 0, seed: 0, name, strokes: pack(strokes) });
+function fromCode(code: string): { strokes: Stroke[]; anatomy: Anatomy; name: string } | null {
+  const d = decode(code);
+  if (!d) return null;
+  const strokes = unpack(d.strokes);
+  const anatomy = analyze(strokes);
+  return anatomy ? { strokes, anatomy, name: d.name } : null;
+}
+// The exact strokes every other device will see.
+const canonical = (strokes: Stroke[]) => unpack(decode(codeOf(strokes, ''))!.strokes);
+
+// Bots fill the empty lanes, drawn from the seed, so every device draws the same ones.
+function field(people: Contender[], seed: number): Contender[] {
+  const rng = mulberry32(seed ^ 0x51ab);
+  const out = people.slice(0, LANES);
+  const kinds: Kind[] = RIVAL_KINDS.slice();
+  while (out.length < LANES) {
+    const kind = kinds.splice(Math.floor(rng() * kinds.length), 1)[0] ?? RIVAL_KINDS[0];
+    const strokes = canonical(rivalDrawing(rng, INKS, kind));
+    const a = analyze(strokes);
+    if (a) out.push({ id: `bot${out.length}`, name: formalName(a, rng), strokes, anatomy: a, bot: true });
+  }
+  return out;
 }
 
-const unpack = (strokes: Dare['strokes']): Stroke[] =>
-  strokes.map((s) => ({ pts: s.pts, color: venue.inks[s.ink] ?? venue.inks[0], w: s.thick ? 16 : 9 }));
-const pack = (strokes: Stroke[]): Dare['strokes'] =>
-  strokes.map((s) => ({ pts: s.pts, ink: Math.max(0, venue.inks.indexOf(s.color)), thick: s.w > 12 }));
-// Race with the strokes exactly as a dare link carries them.
-const canonical = (strokes: Stroke[]) => unpack(decode(encode({ venue: venue.index, seed: 0, name: '', strokes: pack(strokes) }))!.strokes);
+const newSeed = () => (Math.random() * 2 ** 32) >>> 0;
 
-const esc = (s: string) => s.replace(/[&<>"']/g, (c) => `&#${c.charCodeAt(0)};`);
+// ---------- State ----------
+
+type Mode =
+  | { kind: 'solo' }
+  | { kind: 'room'; room: Room }
+  | { kind: 'replay'; people: Contender[]; sharer: string };
+
+let me: { strokes: Stroke[]; name: string } | null = null;
+let room: Room | null = null;
+let round = 0;
+let heat = 0;
+const sent = new Map<string, { code: string; name: string }>();
+let drawingPad: Pad | null = null;
+let hostDeadline = 0;
+let started = -1;
+let stopRace: (() => void) | null = null;
 
 function screen(cls: string, html = ''): HTMLElement {
+  stopRace?.(); stopRace = null;
+  drawingPad?.destroy(); drawingPad = null;
   app.replaceChildren();
-  const el = document.createElement('div');
+  const el = document.createElement('main');
   el.className = `screen ${cls}`;
   el.innerHTML = html;
   app.appendChild(el);
+  requestAnimationFrame(() => el.classList.add('in'));
   return el;
 }
 
-const header = () => `<header class="brand">
-  <div class="logo"><span class="kicker">Squiggle Cup · Venue</span><span class="title">Ochre</span></div>
-  <button class="mute" aria-label="Sound">${isMuted() ? '🔇' : '🔊'}</button>
+const masthead = (right = '') => `<header class="masthead">
+  <button class="mark mono home-link" aria-label="Home">SQUIGGLE CUP</button>
+  <span class="mono right">${right}</span>
+  <button class="mono sound" aria-label="Sound">${isMuted() ? 'SOUND OFF' : 'SOUND ON'}</button>
 </header>`;
 
-function wireMute(el: HTMLElement) {
-  const b = el.querySelector<HTMLButtonElement>('.mute');
-  b?.addEventListener('click', () => { unlock(); setMuted(!isMuted()); b.textContent = isMuted() ? '🔇' : '🔊'; });
+function wire(el: HTMLElement) {
+  const b = el.querySelector<HTMLButtonElement>('.sound');
+  b?.addEventListener('click', () => { unlock(); setMuted(!isMuted()); b.textContent = isMuted() ? 'SOUND OFF' : 'SOUND ON'; });
+  el.querySelector('.home-link')?.addEventListener('click', () => { leaveRoom(); location.hash = ''; home(); });
 }
 
-// ---------- Paint ----------
+function leaveRoom() { room?.leave(); room = null; }
 
-function drawScreen(initial: Stroke[] = [], name = '') {
-  const el = screen('draw', `${header()}
-    ${dare ? `<div class="dare-banner"><b>${esc(dare.name)}</b> dares you. Paint a creature to race it.</div>` : '<p class="lede">Paint a creature on the cave wall. When night comes, it runs for the light.</p>'}`);
-  wireMute(el);
-  const pad = new Pad(venue, (r: PadResult) => {
-    pad.destroy();
-    const strokes = canonical(r.strokes);
-    const anatomy = analyze(strokes) ?? r.anatomy;
-    const name = r.name || formalName(anatomy, Math.random);
-    store.set('sc:last', { strokes, name });
-    me = { strokes, anatomy, name };
-    race(dare ? dare.seed : (Math.random() * 2 ** 32) >>> 0);
-  }, initial, name);
+// ---------- Home ----------
+
+function home(error = '') {
+  const el = screen('home', `${masthead('NO. 01 — STRAIGHT')}
+    <section class="hero">
+      <p class="kicker mono">A drawing race · 2–5 players</p>
+      <h1>Draw a creature.<br><span>It races on its own.</span></h1>
+      <p class="lede">Its shape decides how it moves: legs run, wings fly, round things roll, long things slither. Five lanes, forty metres, no buttons. The better drawing wins.</p>
+    </section>
+    <section class="panel">
+      <label class="field"><span class="mono">Your name</span><input class="pname" maxlength="22" autocomplete="nickname" placeholder="Player" value="${esc(store.get('sc:name'))}"></label>
+      <div class="actions">
+        <button class="btn primary solo">Race solo <span aria-hidden="true">→</span></button>
+        <button class="btn create">Create a room</button>
+      </div>
+      <form class="join">
+        <input class="code mono" maxlength="4" autocomplete="off" autocapitalize="characters" spellcheck="false" placeholder="CODE" aria-label="Room code" value="${esc(roomInHash() ?? '')}">
+        <button class="btn">Join room</button>
+      </form>
+      <p class="error" role="alert">${esc(error)}</p>
+    </section>
+    <footer class="foot mono"><span>DWG 01</span><span>SCALE NTS</span><span>40 000 MM</span></footer>`);
+  wire(el);
+  const nameIn = el.querySelector<HTMLInputElement>('.pname')!;
+  const name = () => { const n = nameIn.value.trim().slice(0, 22); store.set('sc:name', n); return n; };
+  el.querySelector('.solo')!.addEventListener('click', () => { unlock(); sfx.click(); name(); drawScreen({ kind: 'solo' }); });
+  el.querySelector('.create')!.addEventListener('click', () => { unlock(); sfx.click(); connect(name()); });
+  el.querySelector<HTMLFormElement>('.join')!.addEventListener('submit', (e) => {
+    e.preventDefault(); unlock();
+    const code = el.querySelector<HTMLInputElement>('.code')!.value.trim().toUpperCase();
+    if (!/^[A-Z]{4}$/.test(code)) { el.querySelector('.error')!.textContent = 'Room codes are four letters.'; return; }
+    connect(name(), code);
+  });
+}
+
+const roomInHash = () => /[#&]room=([A-Za-z]{4})/.exec(location.hash)?.[1]?.toUpperCase() ?? null;
+
+// ---------- Rooms ----------
+
+async function connect(name: string, code?: string) {
+  leaveRoom();
+  try {
+    room = await Room.open(name, code);
+  } catch (e) {
+    home((e as Error).message);
+    return;
+  }
+  history.replaceState(null, '', `#room=${room.code}`);
+  room.onCast = onCast;
+  room.onPlayers = () => { refresh?.(); if (room?.isHost) hostCheck(); };
+  room.onLost = () => { room = null; home('Lost the connection to the room.'); };
+  lobby();
+}
+
+let refresh: (() => void) | null = null;
+
+function lobby() {
+  const r = room!;
+  const el = screen('lobby', `${masthead(`ROOM ${r.code}`)}
+    <section class="code-block">
+      <p class="kicker mono">Room code</p>
+      <div class="letters mono" aria-label="Room code ${r.code.split('').join(' ')}">${r.code.split('').map((c) => `<span>${c}</span>`).join('')}</div>
+      <button class="btn ghost invite">Copy invite link</button>
+    </section>
+    <section class="roster">
+      <p class="kicker mono">Lanes</p>
+      <ol class="lanes"></ol>
+      <p class="note">Empty lanes are filled with drawn bots.</p>
+    </section>
+    <div class="actions"><button class="btn primary start">Everyone draw <span aria-hidden="true">→</span></button><p class="wait mono"></p></div>
+    <p class="toast" role="status"></p>`);
+  wire(el);
+  const list = el.querySelector('.lanes')!;
+  refresh = () => {
+    list.innerHTML = Array.from({ length: LANES }, (_, i) => {
+      const p = r.players[i];
+      return `<li class="${p?.id === r.id ? 'me' : ''}${p ? '' : ' empty'}"><span class="bubble mono">${pad2(i + 1)}</span><span class="who">${p ? esc(p.name) : 'Bot'}</span><span class="tag mono">${p ? (p.id === r.host ? 'HOST' : p.id === r.id ? 'YOU' : '') : ''}</span></li>`;
+    }).join('');
+    el.querySelector<HTMLButtonElement>('.start')!.hidden = !r.isHost;
+    el.querySelector('.wait')!.textContent = r.isHost ? '' : 'Waiting for the host to start';
+  };
+  refresh();
+  el.querySelector('.start')!.addEventListener('click', () => { sfx.click(); r.cast({ k: 'draw', round: round + 1 }); });
+  el.querySelector('.invite')!.addEventListener('click', async () => {
+    const link = `${location.origin}${location.pathname}#room=${r.code}`;
+    try { await navigator.clipboard.writeText(link); el.querySelector('.toast')!.textContent = 'Invite link copied.'; }
+    catch { el.querySelector('.toast')!.textContent = link; }
+  });
+}
+
+function onCast(from: string, c: Cast) {
+  const r = room;
+  if (!r) return;
+  if (c.k === 'draw') {
+    round = c.round;
+    sent.clear();
+    started = -1;
+    hostDeadline = performance.now() + 45000;
+    drawScreen({ kind: 'room', room: r }, me?.strokes);
+  } else if (c.k === 'drawing') {
+    if (c.round !== round) return;
+    sent.set(from, { code: c.code, name: c.name });
+    refresh?.();
+    if (r.isHost) hostCheck();
+  } else if (c.k === 'race') {
+    round = c.round;
+    started = c.round;
+    const people = c.entrants.map((e) => { const d = fromCode(e.code); return d ? { id: e.id, name: e.name || d.name, strokes: d.strokes, anatomy: d.anatomy } : null; })
+      .filter((x): x is Contender => !!x);
+    runRace(field(people, c.seed), c.seed, r.id, { kind: 'room', room: r }, c.entrants);
+  } else if (c.k === 'lobby') lobby();
+}
+
+// Host: start the race once everyone has sent a drawing (or time is up).
+function hostCheck() {
+  const r = room;
+  if (!r?.isHost || started === round || !sent.size) return;
+  const all = r.players.every((p) => sent.has(p.id));
+  if (!all && performance.now() < hostDeadline) return;
+  const entrants: Entrant[] = r.players.filter((p) => sent.has(p.id)).map((p) => ({ id: p.id, name: sent.get(p.id)!.name || p.name, code: sent.get(p.id)!.code }));
+  started = round;
+  r.cast({ k: 'race', round, seed: newSeed(), entrants });
+}
+setInterval(() => { if (room?.isHost && sent.size && started !== round && performance.now() >= hostDeadline) hostCheck(); }, 1000);
+
+// ---------- Draw ----------
+
+function drawScreen(mode: Mode, initial: Stroke[] = []) {
+  const inRoom = mode.kind === 'room';
+  const el = screen('draw', `${masthead(inRoom ? `ROOM ${mode.room.code} · ROUND ${pad2(round)}` : mode.kind === 'replay' ? 'DARE' : 'SOLO')}
+    ${inRoom ? '<ol class="who-drew mono" aria-label="Who has finished"></ol>' : ''}
+    <div class="waiting" role="status"><p class="mono">SENT</p><p class="msg"></p></div>`);
+  wire(el);
+  const pad = new Pad((r: PadResult) => submit(mode, r, el), { initial, name: me?.name ?? store.get('sc:name'), title: inRoom ? `DWG ${pad2(round)} — DRAW NOW` : 'DWG 01 — CREATURE' });
+  drawingPad = pad;
   pad.mount(el);
+  if (inRoom) {
+    const strip = el.querySelector('.who-drew')!;
+    refresh = () => {
+      strip.innerHTML = mode.room.players.map((p) => `<li class="${sent.has(p.id) ? 'done' : ''}${p.id === mode.room.id ? ' me' : ''}">${esc(p.name)}</li>`).join('');
+      const left = mode.room.players.filter((p) => !sent.has(p.id)).length;
+      el.querySelector('.waiting .msg')!.textContent = left ? `Waiting for ${left} more ${left === 1 ? 'drawing' : 'drawings'}…` : 'Starting…';
+    };
+    refresh();
+  }
+}
+
+function submit(mode: Mode, r: PadResult, el: HTMLElement) {
+  const strokes = canonical(r.strokes);
+  const name = r.name || store.get('sc:name') || formalName(r.anatomy, Math.random);
+  me = { strokes, name };
+  if (mode.kind === 'room') {
+    el.classList.add('sent');
+    mode.room.cast({ k: 'drawing', round, code: codeOf(strokes, name), name });
+    return;
+  }
+  const mine: Contender = { id: 'me', name, strokes, anatomy: analyze(strokes)! };
+  if (mode.kind === 'replay') {
+    const seed = newSeed();
+    runRace(field([mine, ...mode.people.slice(0, LANES - 1)], seed), seed, 'me', { kind: 'solo' });
+  } else {
+    const seed = newSeed();
+    runRace(field([mine], seed), seed, 'me', mode);
+  }
 }
 
 // ---------- Race ----------
 
-function field(seed: number): Entry[] {
-  const rng = mulberry32(seed ^ 0x51ab);
-  const entries: Entry[] = [{ anatomy: me!.anatomy, name: me!.name, kind: 'player' }];
-  if (dare) entries.push({ anatomy: dare.anatomy, name: dare.name, kind: 'rival' });
-  const kinds = RIVAL_KINDS.slice();
-  while (entries.length < 5) {
-    const kind = kinds.splice(Math.floor(rng() * kinds.length), 1)[0] ?? pick(rng, RIVAL_KINDS);
-    const a = analyze(rivalDrawing(rng, venue.inks, kind));
-    if (a) entries.push({ anatomy: a, name: formalName(a, rng), kind: 'rival' });
-  }
-  return entries;
-}
-
-function race(seed: number) {
-  const r = new Race(venue, field(seed), seed);
-  const commentator = new Commentator(r, mulberry32(seed));
+function runRace(cs: Contender[], seed: number, focus: string, mode: Mode, entrants?: Entrant[], skip = 0) {
+  heat++;
+  const race = new Race(cs.map((c) => ({ anatomy: c.anatomy, name: c.name, kind: c.id === focus ? 'player' : 'rival', id: c.id })), seed);
+  for (let i = 0; i < skip && !race.over; i++) race.step();
   const el = screen('race', `
-    <canvas class="stage"></canvas>
-    <div class="hud">
-      <div class="track">${r.racers.map((c) => `<i class="dot${c.isPlayer ? ' me' : ''}"></i>`).join('')}</div>
-      <div class="clock">0.0</div>
-      <button class="mute" aria-label="Sound">${isMuted() ? '🔇' : '🔊'}</button>
-    </div>
-    <div class="count"></div>
-    <div class="ticker" aria-live="polite"></div>`);
-  wireMute(el);
+    <canvas class="stage" aria-label="The race"></canvas>
+    <header class="titleblock">
+      <div class="tb-cell"><span class="mono k">HEAT</span><span class="mono v">${pad2(heat)}</span></div>
+      <div class="tb-cell clock-cell"><span class="mono k">TIME</span><span class="mono v clock">00.00</span></div>
+      <ol class="standings mono" aria-live="off"></ol>
+    </header>
+    <div class="count mono" aria-live="assertive"></div>`);
   const canvas = el.querySelector<HTMLCanvasElement>('.stage')!;
-  const view = new Renderer(canvas, r);
-  const dots = [...el.querySelectorAll<HTMLElement>('.dot')];
+  const view = new Renderer(canvas, race);
   const clock = el.querySelector<HTMLElement>('.clock')!;
   const count = el.querySelector<HTMLElement>('.count')!;
-  const ticker = el.querySelector<HTMLElement>('.ticker')!;
-
-  let acc = 0, last = performance.now(), overAt = 0, lastLine = '';
-  const frame = (now: number) => {
+  const standings = el.querySelector<HTMLElement>('.standings')!;
+  let acc = 0, last = performance.now(), overAt = 0, shown = '', frame = 0, raf = 0;
+  const loop = (now: number) => {
     const dt = Math.min(0.1, (now - last) / 1000);
     last = now;
-    acc += dt * (r.playerRacer?.done ? 2 : 1);
-    while (acc >= DT && !r.over) { r.step(); acc -= DT; }
-    const events = r.events.splice(0);
-    for (const e of events) {
-      view.event(e);
-      if (e.type === 'finish' && (e.value === 1 || e.who === r.player)) sfx.fanfare();
+    acc += dt;
+    while (acc >= DT && !race.over) { race.step(); acc -= DT; }
+    for (const e of race.events.splice(0)) {
+      view.event(e, now);
+      if (e.type === 'finish' && (e.value === 1 || race.racers[e.who].isPlayer)) sfx.fanfare();
       if (e.type === 'photo') sfx.shutter();
-      if (e.type === 'fall' && e.who === r.player) sfx.boing();
+      if (e.type === 'start') sfx.click();
     }
-    commentator.feed(events);
-    const line = commentator.next(r.time);
-    if (line && line !== lastLine) {
-      lastLine = line;
-      ticker.textContent = line;
-      ticker.classList.remove('in'); void ticker.offsetWidth; ticker.classList.add('in');
+    const t = race.time;
+    const label = t < -2 ? '3' : t < -1 ? '2' : t < 0 ? '1' : t < 0.7 ? 'GO' : '';
+    if (label !== shown) {
+      shown = label;
+      count.textContent = label;
+      count.classList.toggle('go', label === 'GO');
+      count.classList.remove('pop'); void count.offsetWidth; if (label) count.classList.add('pop');
+      if (label && label !== 'GO') sfx.pluck();
     }
-    const t = r.time;
-    count.textContent = t < -2 ? 'Night falls…' : t < -0.8 ? 'The paint stirs…' : t < 0.8 ? 'Run!' : '';
-    count.classList.toggle('go', t >= -0.8 && t < 0.8);
-    clock.textContent = Math.max(0, r.playerRacer?.finishTime ?? t).toFixed(1);
-    r.racers.forEach((c, i) => { dots[i].style.left = `${Math.max(0, Math.min(1, c.x / r.course.finish)) * 100}%`; });
-    const mine = r.playerRacer;
-    view.daylight = mine?.done ? Math.min(1, (t - mine.finishTime!) / 1.6) : 0;
+    const mine = race.playerRacer;
+    const shownT = Math.max(0, mine?.finishTime ?? t);
+    clock.textContent = shownT.toFixed(2).padStart(5, '0');
+    if (frame++ % 6 === 0) standings.innerHTML = race.standings().map((r, i) =>
+      `<li class="${r.isPlayer ? 'me' : ''}${r.done ? ' done' : ''}"><span class="p">${i + 1}</span><span class="l">${pad2(r.idx + 1)}</span><span class="n">${esc(r.name)}</span><span class="d">${r.finishTime != null ? r.finishTime.toFixed(2) : `${Math.max(0, r.x).toFixed(1)} m`}</span></li>`).join('');
     view.draw(now, dt);
-    if (r.over) {
+    if (race.over) {
       overAt ||= now;
-      if (now - overAt > 1500) { results(r, seed); return; }
+      if (now - overAt > 1800) { results(race, seed, cs, mode, entrants); return; }
     }
-    requestAnimationFrame(frame);
+    raf = requestAnimationFrame(loop);
   };
-  requestAnimationFrame(frame);
+  raf = requestAnimationFrame(loop);
+  stopRace = () => cancelAnimationFrame(raf);
 }
 
 // ---------- Results ----------
 
-function results(r: Race, seed: number) {
-  const player = me!;
-  const order = r.standings();
-  const mine = r.playerRacer!;
-  const place = order.indexOf(mine);
-  const winner = order[0];
-  const prizes = awards(r);
-  const timeOf = (c: Racer) => (c.finishTime !== null ? `${c.finishTime.toFixed(1)} s` : `${Math.max(0, c.x).toFixed(0)} m`);
-  const strokesOf = (c: Racer): Stroke[] => (c.isPlayer ? player.strokes : c.anatomy.parts.map((p) => ({ pts: p.pts, color: p.color, w: p.w })));
-  const k = KINDS[mine.anatomy.kind];
-  const el = screen('results', `${header()}
-    <section class="dawn">
+function results(race: Race, seed: number, cs: Contender[], mode: Mode, entrants?: Entrant[]) {
+  const order = race.standings();
+  const mine = race.playerRacer;
+  const watching = mode.kind === 'replay' || !mine;
+  const subject = mine ?? order[0];
+  const place = order.indexOf(subject);
+  const timeOf = (r: Racer) => (r.finishTime !== null ? `${r.finishTime.toFixed(2)} s` : `${Math.max(0, r.x).toFixed(1)} m`);
+  const k = KINDS[subject.anatomy.kind];
+  const host = mode.kind === 'room' && mode.room.isHost;
+  const guest = mode.kind === 'room' && !mode.room.isHost;
+  const el = screen('results', `${masthead(`RESULTS — HEAT ${pad2(heat)}`)}
+    <section class="hero-result">
       <div class="th-wrap"></div>
-      <div class="dawn-copy">
-        <p class="kicker">${PLACINGS[place]} into the light</p>
-        <h1>${mine.finishTime !== null ? mine.finishTime.toFixed(1) + '<small>s</small>' : timeOf(mine)}</h1>
-        <p class="who">${esc(player.name)} · ${k.icon} ${k.label}</p>
+      <div class="copy">
+        <p class="kicker mono">${watching ? esc(subject.name) : 'Your creature'}</p>
+        <h1>${PLACINGS[place]}</h1>
+        <p class="time mono">${timeOf(subject)}</p>
+        <p class="who">${watching ? '' : `${esc(subject.name)} · `}${k.label}</p>
       </div>
     </section>
-    <p class="fact">${esc(fact(mine, winner))}</p>
-    <section class="standings">
-      ${order.map((c, i) => `<div class="row${c === mine ? ' me' : ''}">
-        <span class="pos">${i + 1}</span><span class="mini" data-i="${c.idx}"></span>
-        <span class="who"><b>${esc(c.name)}${c === mine ? ' <em>you</em>' : ''}</b><small>${KINDS[c.anatomy.kind].icon} ${KINDS[c.anatomy.kind].label} · ${prizes.get(c.idx)!.title}</small></span>
-        <span class="time">${timeOf(c)}</span></div>`).join('')}
-    </section>
+    <p class="fact"><span class="mono">NOTE</span>${esc(fact(race, subject))}</p>
+    <ol class="table">
+      ${order.map((r, i) => `<li class="${r === mine ? 'me' : ''}">
+        <span class="pos mono">${i + 1}</span><span class="mini" data-i="${r.idx}"></span>
+        <span class="who"><b>${esc(r.name)}${r === mine && !watching ? ' <em>you</em>' : ''}</b><small>${KINDS[r.anatomy.kind].label}${cs[r.idx]?.bot ? ' · bot' : ''}</small></span>
+        <span class="time mono">${timeOf(r)}</span></li>`).join('')}
+    </ol>
     <div class="actions">
-      <button class="pebble primary again">Race again</button>
-      <button class="pebble ghost repaint">Paint another</button>
-      <button class="pebble ghost dare">Dare a friend</button>
+      ${mode.kind === 'replay'
+        ? '<button class="btn primary beat">Draw one to race them <span aria-hidden="true">→</span></button><button class="btn again">Watch again</button>'
+        : guest ? '<p class="wait mono">The host picks what\'s next</p>'
+        : '<button class="btn primary again">Rematch</button><button class="btn redraw">Redraw</button>'}
+      <button class="btn ghost share">Share this race</button>
     </div>
     <p class="toast" role="status"></p>`);
-  wireMute(el);
-  el.querySelector('.th-wrap')!.appendChild(thumb(player.strokes, player.anatomy, 132));
-  el.querySelectorAll<HTMLElement>('.mini').forEach((m) => {
-    const c = r.racers[Number(m.dataset.i)];
-    m.appendChild(thumb(strokesOf(c), c.anatomy, 46));
-  });
-  if (place === 0) sfx.fanfare();
+  wire(el);
+  el.querySelector('.th-wrap')!.appendChild(thumb(cs[subject.idx].strokes, 132));
+  el.querySelectorAll<HTMLElement>('.mini').forEach((m) => m.appendChild(thumb(cs[Number(m.dataset.i)].strokes, 40)));
+  if (!watching && place === 0) sfx.fanfare();
 
-  const link = `${location.origin}${location.pathname}#d=${encode({ venue: venue.index, seed, name: player.name, strokes: pack(player.strokes) })}`;
-  const toast = el.querySelector<HTMLElement>('.toast')!;
-  el.querySelector('.again')!.addEventListener('click', () => { sfx.click(); race(dare ? dare.seed : (Math.random() * 2 ** 32) >>> 0); });
-  el.querySelector('.repaint')!.addEventListener('click', () => { sfx.click(); drawScreen(player.strokes, player.name); });
-  el.querySelector('.dare')!.addEventListener('click', async () => {
+  const people = cs.filter((c) => !c.bot);
+  el.querySelector('.again')?.addEventListener('click', () => {
     sfx.click();
-    const text = `${player.name} came ${PLACINGS[place]} racing out of the cave. Paint something faster →`;
+    if (mode.kind === 'room') { if (host && entrants) mode.room.cast({ k: 'race', round: round + 1, seed: newSeed(), entrants }); }
+    else if (mode.kind === 'replay') runRace(cs, seed, mode.sharer, mode);
+    else { const s = newSeed(); runRace(field(people, s), s, 'me', mode); }
+  });
+  el.querySelector('.redraw')?.addEventListener('click', () => {
+    sfx.click();
+    if (mode.kind === 'room') { if (host) mode.room.cast({ k: 'draw', round: round + 1 }); }
+    else drawScreen(mode, me?.strokes);
+  });
+  el.querySelector('.beat')?.addEventListener('click', () => { sfx.click(); if (mode.kind === 'replay') drawScreen(mode); });
+  el.querySelector('.share')!.addEventListener('click', async () => {
+    sfx.click();
+    const focus = people.findIndex((c) => c.id === (mine?.id ?? ''));
+    const link = `${location.origin}${location.pathname}#race=${seed}.${people.map((c) => codeOf(c.strokes, c.name)).join('.')}&me=${Math.max(0, focus)}`;
+    const toast = el.querySelector<HTMLElement>('.toast')!;
     try {
-      if (navigator.share && matchMedia('(pointer: coarse)').matches) { await navigator.share({ text, url: link }); return; }
+      if (navigator.share && matchMedia('(pointer: coarse)').matches) { await navigator.share({ text: `${subject.name} came ${PLACINGS[place]} in Squiggle Cup. Draw something faster.`, url: link }); return; }
       await navigator.clipboard.writeText(link);
-      toast.textContent = 'Dare link copied.';
+      toast.textContent = 'Link copied. It replays this exact race.';
     } catch {
       toast.innerHTML = `<input readonly value="${esc(link)}" onclick="this.select()">`;
     }
   });
 }
 
-// ?demo=race&kind=biped: a creature of that kind races a mixed field (for screenshots).
+// ---------- Shared races: #race=<seed>.<code>.<code>&me=<i> ----------
+
+function readShared(): { seed: number; people: Contender[]; focus: number } | null {
+  const m = /[#&]race=(\d+)\.([A-Za-z0-9_.-]+)/.exec(location.hash);
+  if (!m) return null;
+  const people = m[2].split('.').map((code, i) => { const d = fromCode(code); return d ? { id: `l${i}`, name: d.name || `Player ${i + 1}`, strokes: d.strokes, anatomy: d.anatomy } : null; })
+    .filter((x): x is Contender => !!x);
+  const focus = Number(/[#&]me=(\d+)/.exec(location.hash)?.[1] ?? 0);
+  return people.length ? { seed: Number(m[1]) >>> 0, people, focus: Math.min(focus, people.length - 1) } : null;
+}
+
+// ---------- Boot ----------
+
 const params = new URLSearchParams(location.search);
-if (params.get('demo')) {
-  const kind = (params.get('kind') ?? 'quadruped') as Anatomy['kind'];
-  const strokes = canonical(rivalDrawing(mulberry32(5), venue.inks, kind));
-  const anatomy = analyze(strokes)!;
-  me = { strokes, anatomy, name: formalName(anatomy, mulberry32(3)) };
-  race(1234);
-} else drawScreen();
+const demo = params.get('demo');
+const shared = readShared();
+if (demo) {
+  // Screenshot entry points: ?demo=draw|race|results|lobby[&kind=flyer][&t=6]
+  const kind = (params.get('kind') ?? 'quadruped') as Kind;
+  const strokes = canonical(rivalDrawing(mulberry32(5), INKS, kind));
+  const a = analyze(strokes)!;
+  me = { strokes, name: params.get('name') ?? 'Your Creature' };
+  const mine: Contender = { id: 'me', name: me.name, strokes, anatomy: a };
+  const cs = field([mine], 1234);
+  if (demo === 'draw') drawScreen({ kind: 'solo' }, params.has('empty') ? [] : strokes);
+  else if (demo === 'race') runRace(cs, 1234, 'me', { kind: 'solo' }, undefined, Math.round((Number(params.get('t') ?? 0) + 3) / DT));
+  else if (demo === 'results') {
+    const race = new Race(cs.map((c) => ({ anatomy: c.anatomy, name: c.name, kind: c.id === 'me' ? 'player' : 'rival', id: c.id })), 1234);
+    while (!race.over) race.step();
+    heat = 1;
+    results(race, 1234, cs, { kind: 'solo' });
+  } else if (demo === 'lobby') {
+    const fake = { code: 'KQRT', id: 'a', host: 'a', players: [{ id: 'a', name: 'Sadid' }, { id: 'b', name: 'Mei' }, { id: 'c', name: 'Jonas' }], isHost: true, cast() {}, leave() {} };
+    room = fake as unknown as Room;
+    lobby();
+  } else home();
+} else if (shared) {
+  const cs = field(shared.people, shared.seed);
+  runRace(cs, shared.seed, shared.people[shared.focus].id, { kind: 'replay', people: shared.people, sharer: shared.people[shared.focus].id });
+} else if (roomInHash()) {
+  connect(store.get('sc:name'), roomInHash()!);
+} else home();

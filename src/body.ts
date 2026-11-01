@@ -1,7 +1,7 @@
 import type { Anatomy, Kind } from './analyze';
 import { dcos, dsin } from './dmath';
 import { type Pt, area, atan2, polyLen, rdp } from './geom';
-import type { Course } from './venues/ochre';
+import type { Course } from './course';
 
 // A drawn creature as a physical body. One rigid body with real mass and
 // inertia, moved by gravity, ground contact and friction, plus the forces its
@@ -60,6 +60,7 @@ export class Body {
   gait = 0;          // gait phase, for bob and render
   readonly kind: Kind;
   private hopWait = 0;
+  private iv = 0;       // pace integral
   private tailDamp: number;
   private hipY: number; // mean local height of the hips
 
@@ -98,15 +99,17 @@ export class Body {
       }
     }
     this.legs.sort((p, q) => p.order - q.order).forEach((l, i) => { l.order = i; });
-    // Wing lift ∝ span²: a typical bird drawing can carry about twice its weight.
-    if (tuning.kind === 'flyer') this.lift = this.wings.reduce((s, w) => s + 210 * w.span * w.span, 0);
+    // Wing lift ∝ span². Anything that reads as a flyer can at least get
+    // airborne (1.4× its weight); big wings carry it with more to spare.
+    if (tuning.kind === 'flyer') this.lift = Math.max(1.4 * this.m * G, this.wings.reduce((s, w) => s + 210 * w.span * w.span, 0));
 
     this.hipY = this.legs.length ? this.legs.reduce((s, l) => s + l.hip[1], 0) / this.legs.length : 0;
     const meanL = this.legs.length ? this.legs.reduce((s, l) => s + l.L, 0) / this.legs.length : 0;
     // Legs hold the hips at 92% of leg length: slightly bent, like a real stance.
     this.ride = meanL * 0.92;
     // If standing on those legs wouldn't lift the belly off the floor, it crawls.
-    this.crawl = this.legs.length > 0 && this.ride + this.hipY < -this.bottom + 0.02;
+    // (Standing, the centre sits at ride − hipY, so the belly clears by ride − hipY + bottom.)
+    this.crawl = this.legs.length > 0 && this.ride - this.hipY + this.bottom < 0.02;
     this.tailDamp = 1 + 0.5 * Math.min(2, a.tails);
   }
 
@@ -137,13 +140,28 @@ export class Body {
     const vT = this.vTarget * mult;
     let fx = 0, fy = -this.m * G, tq = 0;
     let contacts = 0, support = 0;
+    const flying = this.lift > 0 && mult > 0;
+
+    // Pace: proportional plus integral, so every kind really settles at its
+    // target speed whatever drag its belly or feet put up.
+    const err = vT - this.vx;
+    this.iv = mult > 0 ? clamp(this.iv + err * h, -0.6, 0.6) : 0;
+    const pace = this.m * (3 * err + 2.5 * this.iv);
 
     // ---- Body against the floor ----
-    const kc = this.m * 3000, cd = this.m * 90;
+    // Stiffness, damping and friction are shared across the points in
+    // contact: a long belly lying flat touches with twenty points at once,
+    // and per-point gains would add up past what the integrator can hold
+    // (that was the snake's bounce and backward jitter).
+    const hits: { rx: number; ry: number; ct: ReturnType<Course['contact']> }[] = [];
     for (const p of this.hull) {
       const rx = c * p[0] - s * p[1], ry = s * p[0] + c * p[1];
       const ct = course.contact(this.x + rx, this.y + ry - this.rad);
-      if (ct.d <= 0) continue;
+      if (ct.d > 0) hits.push({ rx, ry, ct });
+    }
+    const share = 1 / Math.max(1, hits.length);
+    const kc = this.m * 6000 * share, cd = this.m * 140 * share, kf = this.m * 60 * share;
+    for (const { rx, ry, ct } of hits) {
       contacts++;
       const pvx = this.vx - this.w * ry, pvy = this.vy + this.w * rx;
       const vn = pvx * ct.nx + pvy * ct.ny;
@@ -152,7 +170,7 @@ export class Body {
       const vt = pvx * tx + pvy * ty;
       let mu = kind === 'roller' ? 1.1 : 0.5;
       if (!this.walker && kind !== 'roller') mu = vt > 0 ? 0.1 : 0.9; // belly scales: slide forwards, grip back
-      const ft = clamp(-vt * this.m * 60, -mu * fn, mu * fn);
+      const ft = clamp(-vt * kf, -mu * fn, mu * fn);
       const ex = fn * ct.nx + ft * tx, ey = fn * ct.ny + ft * ty;
       fx += ex; fy += ey;
       tq += rx * ey - ry * ex;
@@ -180,7 +198,7 @@ export class Body {
         const want = this.ride * (1 - 0.05 * lifting);
         const om = 2 * Math.sqrt(G / Math.max(0.15, this.ride)) + 6;
         const up = clamp(this.m * (G + om * om * (want - hipH) - 2 * om * this.vy), 0, 3 * this.m * G);
-        const drive = clamp(this.m * 3 * (vT - this.vx), -MU * up, MU * up);
+        const drive = clamp(pace, -MU * up, MU * up);
         fy += up;
         fx += drive;
         support += up;
@@ -200,35 +218,43 @@ export class Body {
     }
 
     // ---- Slithering, oozing, crawling ----
-    if (contacts && !this.walker && kind !== 'roller' && this.lift === 0) {
-      // Waves along the body push back against the grippy scales.
-      fx += clamp(this.m * 3 * (vT - this.vx), -0.5 * support, 0.8 * support);
+    if (contacts && !this.walker && kind !== 'roller' && !flying) {
+      // Waves along the body push back against the grippy scales. The wave
+      // runs tail-ward a little faster than the body goes forward, so each
+      // bit of body follows the one ahead of it (gait is the wave phase).
+      fx += clamp(pace, -0.5 * support, 0.8 * support);
       upright += 0.4 * support * this.length + this.I * 20;
-      this.gait += h * (2 + 2.5 * Math.abs(this.vx));
+      this.gait += h * (1.5 + 7 * Math.max(0, this.vx));
     }
     if (kind === 'roller') {
-      tq += clamp(this.I * 10 * (-vT / this.R - this.w), -this.m * G * this.R * 0.45, this.m * G * this.R * 0.45);
+      const spin = (vT + 0.8 * this.iv) / this.R;
+      tq += clamp(this.I * 10 * (-spin - this.w), -this.m * G * this.R * 0.45, this.m * G * this.R * 0.45);
     }
 
     // ---- Flying ----
-    if (this.lift > 0) {
+    if (!flying && this.lift > 0) {
+      // Waiting on the line: wings folded, a slow idle beat.
+      this.flapAmp += (0.12 - this.flapAmp) * Math.min(1, h * 6);
+      this.flap += 6.283185307179586 * 1.2 * h;
+    }
+    if (flying) {
       const alt = this.y + this.bottom - course.ground(this.x);
-      const cruise = 0.9 + this.height * 0.6;
+      const cruise = 0.45 + this.height * 0.4;
       const om = 3.2;
       const need = this.m * (G + om * om * (cruise - alt) - 2 * om * this.vy);
       const up = clamp(need, 0, this.lift);
-      this.flapAmp += (clamp(up / Math.max(1e-6, this.lift), 0.15, 1) - this.flapAmp) * Math.min(1, h * 6);
+      this.flapAmp += (clamp(0.25 + up / Math.max(1e-6, this.lift), 0.3, 1) - this.flapAmp) * Math.min(1, h * 6);
       const span = this.wings.reduce((m, wg) => Math.max(m, wg.span), 0.1);
       this.flap += 6.283185307179586 * clamp(1.6 / Math.sqrt(span), 2, 7) * (0.6 + 0.4 * this.flapAmp) * h;
       fy += up * (1 + 0.18 * dsin(this.flap)); // a gentle bob with each beat
-      fx += clamp(this.m * 2.5 * (vT - this.vx), -0.5 * up - 1, 0.6 * up + 1);
+      fx += clamp(pace, -0.5 * up - 1, 0.6 * up + 1);
       upright += this.lift * 0.4 * this.length + this.I * 30;
     }
 
     // ---- Staying level (follows the slope a little) ----
     this.upsideTime = Math.abs(ang) > 1.3 && (contacts || standing) ? this.upsideTime + h : 0;
     if (kind !== 'roller') {
-      const target = this.walker || this.lift ? atan2(slope, 1) * 0.5 : atan2(slope, 1);
+      const target = this.walker || flying ? atan2(slope, 1) * 0.5 : atan2(slope, 1);
       const op = 9;
       let want = this.I * (op * op * (target - ang) - 2 * op * this.w * this.tailDamp);
       let limit = upright + this.I * 6 * this.tailDamp;
@@ -256,7 +282,7 @@ export class Body {
     } else this.airTime += h;
     this.touching = any;
     this.squash += (1 - this.squash) * Math.min(1, h * 10);
-    if (!this.walker && !this.lift && kind !== 'roller' && contacts) this.squash = 1 + 0.06 * dsin(this.gait * 2);
+    if (!this.walker && !flying && kind !== 'roller' && contacts) this.squash = 1 + (kind === 'jelly' ? 0.07 : 0.02) * dsin(this.gait * (kind === 'jelly' ? 0.6 : 1));
   }
 
   // Feet: planted feet stay put; a foot left behind (or too far ahead) steps
@@ -314,7 +340,7 @@ export class Body {
       // Landing and crouch: soft, critically damped.
       const om = 14;
       const want = this.ride * 0.8;
-      push(clamp(this.m * 4 * (vT - this.vx), -this.m * G, this.m * G), clamp(this.m * (G + om * om * (want - hipH) - 2 * om * this.vy), 0, 4 * this.m * G));
+      push(clamp(this.m * (4 * (vT - this.vx) + 2.5 * this.iv), -this.m * G, this.m * G), clamp(this.m * (G + om * om * (want - hipH) - 2 * om * this.vy), 0, 4 * this.m * G));
       this.hopWait += h;
       this.squash = 0.9 + 0.1 * (hipH / reach);
       if (this.hopWait > 0.12 && this.vy > -0.2) {
