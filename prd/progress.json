@@ -1,0 +1,488 @@
+{
+  "handoff": {
+    "updated": "2026-11-01",
+    "summary": "M0 prototype is playable: draw → wake-up/countdown → Best in Show race vs 3 bots → results with awards, judges and a dare link. `npm run dev` to play, `npm test` for the headless sim tests (encoding, determinism, 12-race bot fuzz). `?demo=race` / `?demo=results` autopilot a creature for screenshots.",
+    "next": [
+      "Playtest the laugh test (PRD §22) with 5 strangers",
+      "Decide whether leap dominance is OK (see open), then tune",
+      "Lazy-load Rapier so the draw screen meets the 120 KB budget",
+      "Handler and leash, funniest-fail replay (M1)"
+    ],
+    "open": [
+      "Leap is most of the speed: on flat ground tapping alone gives ~0.8 m/s, tapping + a leap every 1–1.5 s gives ~2 m/s. Bots now hop on open ground so races land at p50 66 s. Shape matters less than leap rhythm; PRD §7 numbers unchanged (gathered in TUNE in src/creature.ts)",
+      "Legless and one-legged creatures are slow (median 106–119 s; most DNFs)",
+      "Bundle is 3.5 MB (Rapier WASM inlined) and loads up front; PRD §20.1 wants ≤120 KB first load",
+      "Cross-browser determinism not yet checked"
+    ]
+  },
+  "statuses": {
+    "planned": "Not started",
+    "in-progress": "Partly built",
+    "built": "Code written, not verified",
+    "verified": "Checked with evidence",
+    "blocked": "Blocked"
+  },
+  "milestones": [
+    {
+      "id": "H",
+      "title": "Hackathon build (PRD §28)",
+      "exit": "3 people on different networks join one room by code, draw, race and see results on a public URL; rematch works 3× in a row; Devpost submitted before 5:00 AM JST Nov 2",
+      "features": [
+        {
+          "title": "GitHub repo + shared trmi project",
+          "section": "28.1",
+          "status": "planned"
+        },
+        {
+          "title": "Runnable entry point (index.html, src/main.ts)",
+          "section": "28.5",
+          "status": "planned"
+        },
+        {
+          "title": "Draw pad with ink meter",
+          "section": "6.1",
+          "status": "in-progress",
+          "note": "Only ink cost (inkUsed in src/analyze.ts)"
+        },
+        {
+          "title": "Reading the drawing",
+          "section": "6.3",
+          "status": "built",
+          "note": "src/analyze.ts"
+        },
+        {
+          "title": "Physics creature, locomotion, leap, upright",
+          "section": "7.1",
+          "status": "built",
+          "note": "src/creature.ts"
+        },
+        {
+          "title": "Best in Show course (simplified)",
+          "section": "28.3",
+          "status": "planned"
+        },
+        {
+          "title": "Race loop: countdown, finish, nudge, ranking",
+          "section": "9.1",
+          "status": "in-progress",
+          "note": "Handler nudge only"
+        },
+        {
+          "title": "Bot pilot for empty seats",
+          "section": "11.1",
+          "status": "planned"
+        },
+        {
+          "title": "Canvas 2D renderer with googly eyes",
+          "section": "18.1",
+          "status": "in-progress",
+          "note": "Googly pupil physics only"
+        },
+        {
+          "title": "Results: podium, awards, comparison fact, rematch",
+          "section": "9.2",
+          "status": "planned"
+        },
+        {
+          "title": "Relay server (rooms by 4-letter code)",
+          "section": "28.4",
+          "status": "planned"
+        },
+        {
+          "title": "Host-authoritative snapshots + guest inputs",
+          "section": "28.4",
+          "status": "planned"
+        },
+        {
+          "title": "Lobby, draw, reveal, race, results screens",
+          "section": "28.2",
+          "status": "planned"
+        },
+        {
+          "title": "Deployed public URL",
+          "section": "28.7",
+          "status": "planned"
+        },
+        {
+          "title": "3-player online playtest",
+          "section": "28.7",
+          "status": "planned"
+        },
+        {
+          "title": "Demo video",
+          "section": "28.2",
+          "status": "planned"
+        },
+        {
+          "title": "Devpost submission + trmi write-up",
+          "section": "28.1",
+          "status": "planned"
+        }
+      ]
+    },
+    {
+      "id": "M0",
+      "title": "Core proof",
+      "exit": "3 of 5 strangers laugh within 30 s and press rematch. Ugly creatures are fun to race. No sliding exploit wins",
+      "features": [
+        {
+          "title": "Drawing pad",
+          "section": "6.1",
+          "status": "built",
+          "note": "src/pad.ts: 600px pad, 4 inks × 2 widths, 3,000 px ink budget, undo/clear/name. No 20 s multiplayer timer yet"
+        },
+        {
+          "title": "Live drawing feedback",
+          "section": "6.2",
+          "status": "built",
+          "note": "src/pad.ts: body wash, pulsing knuckle dots, blinking googly eyes, status chip, wet sheen"
+        },
+        {
+          "title": "Reading the drawing",
+          "section": "6.3",
+          "status": "built",
+          "note": "src/analyze.ts"
+        },
+        {
+          "title": "Compact encoding",
+          "section": "6.4",
+          "status": "verified",
+          "note": "src/encode.ts; npm test checks round trip, idempotent re-encode, bad input → null"
+        },
+        {
+          "title": "Dare links",
+          "section": "14.2",
+          "status": "built",
+          "note": "URL #d=… carries creature + seed + your inputs; plays as a non-colliding ghost. Note: the ghost's time can differ from the original run, since it raced bots there"
+        },
+        {
+          "title": "Physics creature",
+          "section": "7.1",
+          "status": "built",
+          "note": "src/creature.ts"
+        },
+        {
+          "title": "Spoke-model locomotion",
+          "section": "7.2",
+          "status": "built",
+          "note": "src/creature.ts"
+        },
+        {
+          "title": "Leap",
+          "section": "7.3",
+          "status": "built",
+          "note": "src/creature.ts"
+        },
+        {
+          "title": "Staying upright and flips",
+          "section": "7.4",
+          "status": "built",
+          "note": "src/creature.ts"
+        },
+        {
+          "title": "Anti-exploit rules",
+          "section": "7.5",
+          "status": "in-progress",
+          "note": "Torque cap; fuzz checks ≤9 m/s and no permanent stuck. Ranked-only rules not built"
+        },
+        {
+          "title": "Controls and feel",
+          "section": "8",
+          "status": "built",
+          "note": "Tap/Space stride, hold-release leap, instant sound/ring/squash, rhythm ring, on-beat drum vs thud, first-race hint"
+        },
+        {
+          "title": "Race flow and ranking",
+          "section": "9.1",
+          "status": "built",
+          "note": "src/race.ts: countdown, finish, photo finish, nudge, end rules, standings, 3× after you finish"
+        },
+        {
+          "title": "Basic results screen",
+          "section": "9.2",
+          "status": "built",
+          "note": "Rosette, you vs winner + fact, judges, standings with awards, rematch/redraw/dare"
+        },
+        {
+          "title": "Best in Show course",
+          "section": "5.1",
+          "status": "built",
+          "note": "src/venues/bestInShow.ts: spring hurdles, seesaw, tunnel ceiling, springy weave poles, finish at 92 m"
+        },
+        {
+          "title": "Quick Race vs 1–3 bots",
+          "section": "11.1",
+          "status": "built",
+          "note": "3 generated bots (src/bots.ts) or ghost + 2 bots for dares"
+        },
+        {
+          "title": "Canvas 2D renderer",
+          "section": "18.1",
+          "status": "built",
+          "note": "src/render.ts"
+        }
+      ]
+    },
+    {
+      "id": "M1",
+      "title": "Five venues",
+      "exit": "Every venue is readable and fun on a phone; determinism matches across browsers",
+      "features": [
+        {
+          "title": "Deterministic simulation (cross-browser)",
+          "section": "23",
+          "status": "in-progress",
+          "note": "Sim uses only + − × ÷ sqrt; same-machine repeat hash verified by npm test. Cross-browser hash not checked"
+        },
+        {
+          "title": "Googly eyes, jiggle, squash",
+          "section": "7.6",
+          "status": "in-progress",
+          "note": "Googly pupils, blink, tap/landing squash, wake-up stretch. No decoration jiggle"
+        },
+        {
+          "title": "STOMP",
+          "section": "5.2",
+          "status": "planned"
+        },
+        {
+          "title": "Ochre",
+          "section": "5.3",
+          "status": "planned"
+        },
+        {
+          "title": "Fog",
+          "section": "5.4",
+          "status": "planned"
+        },
+        {
+          "title": "Tug Day vs bots",
+          "section": "5.5",
+          "status": "planned"
+        },
+        {
+          "title": "Handler and leash",
+          "section": "5.1",
+          "status": "planned"
+        },
+        {
+          "title": "Formal names, underdog swings",
+          "section": "10.1",
+          "status": "in-progress",
+          "note": "Formal names built; underdog swings not"
+        },
+        {
+          "title": "Deadpan commentary",
+          "section": "10.2",
+          "status": "built",
+          "note": "src/comedy.ts Best in Show voice only"
+        },
+        {
+          "title": "Awards",
+          "section": "10.3",
+          "status": "built",
+          "note": "src/comedy.ts"
+        },
+        {
+          "title": "Fail detector",
+          "section": "10.4",
+          "status": "planned"
+        },
+        {
+          "title": "Judges' scorecards",
+          "section": "10.5",
+          "status": "built",
+          "note": "src/comedy.ts"
+        },
+        {
+          "title": "Result card",
+          "section": "14.2",
+          "status": "planned"
+        },
+        {
+          "title": "Venue select",
+          "section": "17",
+          "status": "planned"
+        },
+        {
+          "title": "PixiJS renderer",
+          "section": "18.1",
+          "status": "planned"
+        }
+      ]
+    },
+    {
+      "id": "M2",
+      "title": "Rooms",
+      "exit": "Shoving feels fair at about 100 ms",
+      "features": [
+        {
+          "title": "Rooms (2–6 players)",
+          "section": "11.2",
+          "status": "planned"
+        },
+        {
+          "title": "Lockstep netcode",
+          "section": "12",
+          "status": "planned"
+        },
+        {
+          "title": "Spirits in Ochre and Fog",
+          "section": "11.2",
+          "status": "planned"
+        },
+        {
+          "title": "Tug Day 2v2 online",
+          "section": "11.6",
+          "status": "planned"
+        }
+      ]
+    },
+    {
+      "id": "M3",
+      "title": "Competition",
+      "exit": "Day-2 retention; the cup runs reliably every day",
+      "features": [
+        {
+          "title": "Checked score submission",
+          "section": "13",
+          "status": "planned"
+        },
+        {
+          "title": "Leaderboards and category boards",
+          "section": "13",
+          "status": "planned"
+        },
+        {
+          "title": "Ranked play",
+          "section": "11.3",
+          "status": "planned"
+        },
+        {
+          "title": "Daily Cup with betting",
+          "section": "11.4",
+          "status": "planned"
+        },
+        {
+          "title": "Graft",
+          "section": "11.5",
+          "status": "planned"
+        }
+      ]
+    },
+    {
+      "id": "M4",
+      "title": "Launch",
+      "exit": "Share rate, D1/D7 return, dare-link conversion",
+      "features": [
+        {
+          "title": "Replay clip rendering",
+          "section": "14.2",
+          "status": "planned"
+        },
+        {
+          "title": "Share sheet",
+          "section": "14.2",
+          "status": "planned"
+        },
+        {
+          "title": "Share-page previews",
+          "section": "14.3",
+          "status": "planned"
+        },
+        {
+          "title": "PWA",
+          "section": "20.3",
+          "status": "planned"
+        },
+        {
+          "title": "Logo, icon, landing",
+          "section": "15.1",
+          "status": "planned"
+        },
+        {
+          "title": "Trailer and launch posts",
+          "section": "14.4",
+          "status": "planned"
+        }
+      ]
+    },
+    {
+      "id": "Later",
+      "title": "Later",
+      "exit": "",
+      "features": [
+        {
+          "title": "Notebook venue",
+          "section": "5.6",
+          "status": "planned"
+        },
+        {
+          "title": "A new venue each month",
+          "section": "5.6",
+          "status": "planned"
+        },
+        {
+          "title": "Cosmetic extras",
+          "section": "24",
+          "status": "planned"
+        }
+      ]
+    },
+    {
+      "id": "—",
+      "title": "No milestone in the PRD",
+      "exit": "",
+      "features": [
+        {
+          "title": "Reveal and wake-up",
+          "section": "4.1",
+          "status": "in-progress",
+          "note": "Wake-up during countdown (eyes open, stretch). No card-flip reveal"
+        },
+        {
+          "title": "Microinteractions",
+          "section": "15.2",
+          "status": "in-progress",
+          "note": "Pad sheen/knuckles/blink, pebble buttons, photo flash + stamp, confetti, dust, speed lines"
+        },
+        {
+          "title": "Audio",
+          "section": "16",
+          "status": "in-progress",
+          "note": "src/audio.ts synthesised placeholder sfx, mute remembered. No sprite file or music"
+        },
+        {
+          "title": "Gallery and settings",
+          "section": "17",
+          "status": "planned"
+        },
+        {
+          "title": "Responsive layout and camera",
+          "section": "20.2",
+          "status": "planned"
+        },
+        {
+          "title": "Speed budgets",
+          "section": "20.1",
+          "status": "planned"
+        },
+        {
+          "title": "Accessibility",
+          "section": "20.4",
+          "status": "planned"
+        },
+        {
+          "title": "Moderation and safety",
+          "section": "21",
+          "status": "planned"
+        },
+        {
+          "title": "Analytics",
+          "section": "22",
+          "status": "planned"
+        }
+      ]
+    }
+  ]
+}
