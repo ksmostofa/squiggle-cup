@@ -6,6 +6,7 @@ import { INKS, LANES } from './course';
 import { DT, KINDS } from './creature';
 import { type Dare, decode, encode } from './encode';
 import { thumb } from './ink';
+import { card, drawingPng, save } from './card';
 import { type Cast, type Entrant, Room } from './net';
 import { PLACINGS, fact, formalName } from './names';
 import { DRAW_TIME, DRAW_TIMES, Pad, type PadResult, THICK, THIN } from './pad';
@@ -431,8 +432,10 @@ function results(race: Race, seed: number, cs: Contender[], mode: Mode, entrants
         ? '<button class="btn primary beat">Draw one to race them <span aria-hidden="true">→</span></button><button class="btn again">Watch again</button>'
         : guest ? '<p class="wait mono">Host picks next</p>'
         : '<button class="btn primary again">Rematch</button><button class="btn redraw">Redraw</button>'}
-      <button class="btn ghost share">Share this race</button>
+      <button class="btn ghost share">Share race</button>
+      <button class="btn ghost save-card">Save card</button>
     </div>
+    <button class="linkish mono save-drawing">Save drawing</button>
     <p class="toast" role="status"></p>`);
   wire(el);
   el.querySelector('.th-wrap')!.appendChild(thumb(cs[subject.idx].strokes, 132));
@@ -452,6 +455,12 @@ function results(race: Race, seed: number, cs: Contender[], mode: Mode, entrants
     else drawScreen(mode, me?.strokes);
   });
   el.querySelector('.beat')?.addEventListener('click', () => { sfx.click(); if (mode.kind === 'replay') drawScreen(mode); });
+  const slug = subject.name.replace(/[^a-z0-9]+/gi, '-').toLowerCase() || 'creature';
+  el.querySelector('.save-card')!.addEventListener('click', () => {
+    sfx.click();
+    save(card({ strokes: cs[subject.idx].strokes, name: subject.name, place: PLACINGS[place], time: timeOf(subject), kind: k.label, win: place === 0 }), `squiggle-cup-${slug}.png`);
+  });
+  el.querySelector('.save-drawing')!.addEventListener('click', () => { sfx.click(); save(drawingPng(cs[subject.idx].strokes), `${slug}.png`); });
   el.querySelector('.share')!.addEventListener('click', async () => {
     sfx.click();
     const focus = people.findIndex((c) => c.id === (mine?.id ?? ''));

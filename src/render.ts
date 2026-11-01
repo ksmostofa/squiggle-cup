@@ -324,8 +324,8 @@ export class Renderer {
       paintCreature(c, { body: b, anatomy: r.anatomy, size: r.s.size, t: now / 1000 }, gx, gy - b.y * k, k);
       const top = gy - (b.y + b.height * 0.55 + 0.18) * k;
       if (r === me) myTop = top;
-      // Only your creature is named on the sheet; the standings name the rest.
-      if (r === me) tags.push({ x: gx, y: top, name: r.name, mine: true, done: null });
+      // Every creature is named; tags are spaced apart below so none overlap.
+      tags.push({ x: gx, y: top, name: r.name, mine: r === me, done: null });
     }
 
     // Finish moments: a leader line and the time, drawn in at the line.

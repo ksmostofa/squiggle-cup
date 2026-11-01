@@ -281,3 +281,7 @@ canvas.stage { display: block; width: 100%; height: 108px; }
 .seg button.on span { color: #c9ccd2; }
 .lobby .host-only { margin: 0 0 14px; }
 
+
+.results .actions { grid-template-columns: 1fr 1fr; }
+.linkish { display: block; margin: 14px auto 0; padding: 6px; border: 0; background: none; font-size: 11px; color: var(--grey); text-decoration: underline; text-underline-offset: 3px; }
+.linkish:hover { color: var(--ink); }
