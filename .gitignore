@@ -2,3 +2,4 @@ node_modules
 dist
 prd/index.html
 prd/.snapshot.json
+.wrangler/

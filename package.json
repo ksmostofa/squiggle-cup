@@ -8,6 +8,8 @@
     "build": "tsc --noEmit && vite build",
     "preview": "vite preview",
     "relay": "node server/relay.mjs",
+    "relay:cf": "wrangler dev --local",
+    "deploy": "bash scripts/deploy.sh",
     "prd": "node prd/build.mjs",
     "test": "node scripts/run-ts.mjs test/sim.test.ts && node scripts/run-ts.mjs test/balance.test.ts"
   },
