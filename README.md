@@ -1,65 +1,84 @@
-# Squiggle Cup
+<div align="center">
 
-Draw it. Race it. Up to five players draw creatures, then race them across a white architectural sheet. Legs trot, wings flap and snakes slither. The shape decides the motion; the same drawing runs the same time.
+<img src="public/logo.svg" alt="Squiggle Cup" width="260">
 
-**Play:** https://squiggle-cup.ksmostofa576.workers.dev/ (also https://squigglecup.pages.dev/)
+**Draw it. Race it.**
 
-Create a room and share its four-letter code, or play solo against the house creatures. Choose a 20, 30 or 60 second drawing timer, draw and watch the live preview, then press Race. Empty lanes get house creatures. The results offer rematch, redraw, a replay link, a 1080×1350 result card, a drawing PNG with a solid white background, and posting to the global leaderboard.
+A multiplayer drawing race. Sketch a creature in 30 seconds, then watch it run.<br>
+The shape decides the motion: legs trot, wings flap, snakes slither.
 
-## How speed works
+[**▶ Play now**](https://squiggle-cup.ksmostofa576.workers.dev/) · [Mirror](https://squigglecup.pages.dev/)
 
-A drawing's score decides its speed (`src/score.ts`), and the top is meant to take real drawing skill:
+<img src="public/og.png" alt="Squiggle Cup race" width="760">
 
-- **Movement design (30%)**: proportions that help its kind move, judged tightly: even legs of the right length (and the right number), wings of the right span, a truly round body.
-- **Craftsmanship (70%)**: a joined-up creature (no floating bits, no scribbled tangle) × line quality (steady strokes, loops that close) × expression (eyes looking the way it runs, a mouth) and detail. Detail counts kinds of feature (head, neck, tail, ears, feet, pupils, markings…), never strokes, and each new kind adds less.
+</div>
 
-Speed flattens toward the top, so the last points are the hardest. Every kind has the same best possible time (14.60 s over 40 m). The draw screen shows the score, its two halves and the next thing to try.
+---
 
-House creatures come from ten curated families: horse, dog, cat, human, robot, bird, bat, snake, blob and many-legged. Each is drawn from a seed with a skill level and scored by the same rules. A new game deals a new lineup; Rematch and Redraw keep it. Their skill levels are set against ordinary first drawings (`test/beginners.ts`): an ordinary drawing finishes mid-pack and sometimes wins; a careful one usually wins. Vehicles (wheels, cars, jets, rockets) are planned as a separate mode.
+## How it plays
 
-The leaderboard (`server/board.ts`) re-races every posted drawing on the server, so its times are verified. It has overall and per-type views, equal times share a place, and every entry can be challenged 1v1 as often as you like. Entries carry a rules version and a season (`src/verify.ts`); bump `RULES` whenever the simulation or scoring changes.
+| ✏️ Draw | 🏁 Race | 🏆 Results |
+|:---:|:---:|:---:|
+| <img src="docs/draw-desktop.png" width="260"> | <img src="docs/race-desktop.png" width="260"> | <img src="docs/results-desktop.png" width="260"> |
+| A live preview runs your creature as you draw, with a score and one tip for what to add next. | Up to five racers on a tilt-shift architect's sheet. Your shape becomes your gait. | Rematch, redraw, share a replay link, save a result card, post to the leaderboard. |
 
-Every creature you race is kept under **My creatures** on that device, ready to race again or touch up. Esc (or the II button) pauses a solo race; in a room it offers to leave.
+## Features
 
-Share previews use `public/og.png` and an 8 s loop, `public/og.mp4`; `node scripts/og.mjs <dev server URL>` remakes both (needs ffmpeg). The demo script lives at https://claude.ai/artifact/UDx3A7d7YPKNLKGjVXA3Gc.
+- **Rooms with a four-letter code.** Play with friends, or solo against house creatures.
+- **Ten creature families.** Horse, dog, cat, human, robot, bird, bat, snake, blob, many-legged.
+- **Skill wins.** Speed comes from how well it's drawn: joined-up shapes, steady lines, eyes, feet, detail. Every kind shares the same best time, so no kind has a shortcut.
+- **Fair and repeatable.** The same drawing always runs the same time, on every screen.
+- **Verified leaderboard.** The server re-races every posted drawing; challenge any entry 1v1.
+- **My creatures.** Every drawing you race is kept on your device, ready to race again.
+- **Drawn to size.** Every creature looks the same size, unless you drew it small.
 
-## Development
+<div align="center">
+<img src="docs/sizes.png" alt="Same dog drawn normally and drawn small" width="620"><br>
+<sub>Lane 3 and lane 4 are the same dog. Lane 4 was drawn small, so it looks small (it still races on equal terms).</sub>
+</div>
+
+<br>
+
+<div align="center">
+<img src="docs/race-phone.png" alt="Race on a phone" width="220">&nbsp;&nbsp;&nbsp;<img src="docs/home-desktop.png" alt="Home" width="420"><br>
+<sub>Built for phones first. Every screen's buttons fit without scrolling.</sub>
+</div>
+
+## Made together in trmi
+
+Squiggle Cup was built in a weekend for **trmi × Lovhack × Nexus 2026**. The team used trmi as its shared space: one living spec, a progress board with every feature's status, and a running handoff, so anyone could pick up where someone else left off.
+
+The big calls were made there, as a team:
+
+- 🎨 **Plain ink on a white sheet.** A 3D look was tried, then dropped.
+- ⚖️ **Strict scoring.** A great drawing should beat a quick one, and every kind should have the same ceiling.
+- 📏 **One size for all.** Bigger creatures, no perspective shrinking, only small if drawn small.
+- 🚗 **Vehicles later.** Wheels, cars and rockets get their own mode.
+
+## Run it
 
 ```bash
 npm ci
-npm run dev
-npm test
-npm run build
+npm run dev          # game + relay + leaderboard on localhost
+npm test             # simulation, balance, scoring, leaderboard
+npm run test:browser # layout, rooms, leaderboard, pause (Playwright)
 ```
 
-Vite includes the WebSocket relay at `/relay` and an in-memory leaderboard at `/api/board` for both dev and preview. The relay forwards drawings and a seed; each browser runs the deterministic simulation. Rhythm input is currently disabled. `?demo=gallery` shows the house creatures with their scores and times; `?demo=board` opens the leaderboard.
-
-```bash
-npx playwright install chromium
-npm run test:browser
-```
-
-To use an installed Chromium, set `PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH=/usr/bin/chromium`. To test a deployment, also set `PLAYTEST_URL` to its address. The browser suite uses three isolated sessions and real pointer input, checks matching results through three rematches, downloads both PNGs and checks host handoff. Locally it also checks that no creature or label overlaps another at phone, desktop and landscape sizes. It also checks that every screen's main buttons are in view without scrolling, that a long press opens no browser menu, and (`audit.spec.ts`) the house lineup, the one shared scale, the leaderboard, 1v1, My creatures and pause. It does not record video.
-
-`node scripts/run-ts.mjs scripts/tune.ts` recalibrates the shared ceiling and reports where beginners and house creatures land.
-
-## Deployment
+<details>
+<summary>Deploy and testing notes</summary>
 
 ```bash
 npx wrangler login
-npm run deploy        # relay + game Worker (primary site, leaderboard)
-npm run deploy:pages  # the same frontend on Cloudflare Pages
+npm run deploy        # relay + game Worker (with the leaderboard Durable Object)
+npm run deploy:pages  # same frontend on Cloudflare Pages
 ```
 
-`npm run deploy` ships the relay using `wrangler.toml`, builds the game with its live WebSocket URL, and ships the game Worker using `wrangler.site.toml`. The game Worker also hosts the leaderboard Durable Object. The script then checks that the public URL serves the game document.
+- Browser tests: set `PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH=/usr/bin/chromium` to use an installed Chromium, and `PLAYTEST_URL=<url>` to test a deployment (tests never post to a live leaderboard).
+- `?demo=gallery` shows every house creature with its score; `?demo=board` opens the leaderboard.
+- Changing the simulation or scoring? Bump `RULES` in `src/verify.ts`, then recalibrate with `node scripts/run-ts.mjs scripts/tune.ts`.
+- `node scripts/og.mjs <dev url>` remakes the share image and video (needs ffmpeg).
+- Spec: `PRD.md`. Progress and handoff: `prd/progress.json`.
 
-`npm run deploy:pages` builds a separate copy into `dist-pages` that points at the same relay and the Worker's leaderboard. It creates the Pages project if needed, deploys it, then checks the document. Its settings (project, branch, relay and API URLs) are at the top of `scripts/deploy-pages.sh`. Rooms and the leaderboard are shared, so players on either address can play together.
+</details>
 
-- Game (Workers): https://squiggle-cup.ksmostofa576.workers.dev/
-- Game (Pages): https://squigglecup.pages.dev/
-- Relay: wss://squiggle-cup-relay.ksmostofa576.workers.dev/relay
-- Leaderboard API: https://squiggle-cup.ksmostofa576.workers.dev/api/board
-- Preview image: `public/og.png` (1200×630)
-- Handoff: `prd/progress.json`; `npm run prd` rebuilds the progress page.
-
-The historic PRD includes earlier designs. The handoff describes the current build. Demo and OG videos are omitted at the user's request.
+<div align="center"><sub>Vite · TypeScript · Canvas · Cloudflare Workers + Durable Objects</sub></div>

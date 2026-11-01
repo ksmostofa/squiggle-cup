@@ -206,7 +206,7 @@ function watch(entries: Entry[], seed: number) {
     }
     if (up > REACH_UP || down > REACH_DOWN) over.push(`${fam} ${i}: ${up.toFixed(2)} up, ${down.toFixed(2)} down`);
   }
-  check(!over.length, `every house creature stays inside its lane through a whole race${over.length ? ': ' + over.join(', ') : ''}`);
+  check(!over.length, `every house creature stays within its lane (plus SPILL into the lane behind) through a whole race${over.length ? ': ' + over.join(', ') : ''}`);
 }
 
 if (failed) { console.log(`${failed} failed`); process.exit(1); }

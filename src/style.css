@@ -42,11 +42,15 @@ button { cursor: pointer; }
   min-height: 100dvh;
   padding: 0 var(--pad) calc(var(--pad) + env(safe-area-inset-bottom));
   background-color: var(--paper);
+  /* Clean paper inside the frame; the drafting grid shows only in the margin. */
+  --margin: 0px;
   background-image:
+    linear-gradient(var(--paper), var(--paper)),
     linear-gradient(var(--faint) 1px, transparent 1px),
     linear-gradient(90deg, var(--faint) 1px, transparent 1px);
-  background-size: 24px 24px;
-  background-position: -1px -1px;
+  background-size: calc(100% - 2 * var(--margin)) calc(100% - 2 * var(--margin)), 24px 24px, 24px 24px;
+  background-position: center, -1px -1px, -1px -1px;
+  background-repeat: no-repeat, repeat, repeat;
   opacity: 0;
   transform: translateY(6px);
   transition: opacity 0.45s var(--ease), transform 0.45s var(--ease);
@@ -54,7 +58,7 @@ button { cursor: pointer; }
 .screen.in { opacity: 1; transform: none; }
 @media (min-width: 700px) {
   #app { padding: 28px; align-items: flex-start; }
-  .screen { min-height: calc(100dvh - 56px); box-shadow: 0 1px 0 var(--line), 0 18px 50px -24px rgba(30, 30, 40, 0.28); }
+  .screen { --margin: 11px; min-height: calc(100dvh - 56px); box-shadow: 0 1px 0 var(--line), 0 18px 50px -24px rgba(30, 30, 40, 0.28); }
   .screen::before { content: ""; position: absolute; inset: 10px; border: 1px solid var(--rule); pointer-events: none; transform-origin: left; animation: rule-in 0.9s var(--ease) both; }
 }
 @keyframes rule-in { from { clip-path: inset(0 100% 100% 0); } to { clip-path: inset(0 0 0 0); } }
@@ -243,7 +247,7 @@ canvas.stage { display: block; width: 100%; height: 108px; }
 /* ---------- Results ---------- */
 .hero-result { display: grid; grid-template-columns: auto minmax(0, 1fr); align-items: center; gap: 22px; padding: 40px 0 24px; }
 .hero-result .copy { min-width: 0; }
-.th-wrap { width: 132px; height: 132px; border: 1px solid var(--ink); background: var(--paper); display: grid; place-items: center; }
+.th-wrap { width: 132px; height: 132px; border: 1px solid var(--ink); background: var(--paper); display: grid; place-items: center; overflow: hidden; }
 .hero-result h1 { margin: 0; font-size: clamp(56px, 16vw, 92px); line-height: 0.9; font-weight: 600; letter-spacing: -0.05em; }
 .hero-result .time { margin: 8px 0 2px; font-size: 18px; }
 .hero-result .who { margin: 0; color: var(--grey); overflow-wrap: anywhere; }

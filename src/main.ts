@@ -510,7 +510,10 @@ function results(race: Race, seed: number, cs: Contender[], mode: Mode, entrants
     };
     refresh();
   }
-  el.querySelector('.th-wrap')!.appendChild(thumb(cs[subject.idx].strokes, 132));
+  // Fill the frame, whatever size the layout gives it (96 px on compact screens).
+  const portrait = thumb(cs[subject.idx].strokes, 132);
+  portrait.style.width = portrait.style.height = '100%';
+  el.querySelector('.th-wrap')!.appendChild(portrait);
   el.querySelectorAll<HTMLElement>('.mini').forEach((m) => m.appendChild(thumb(cs[Number(m.dataset.i)].strokes, 40)));
   if (!watching && place === 0) sfx.fanfare();
 

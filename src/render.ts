@@ -158,6 +158,14 @@ export const shownHeight = (y: number, rest: number) => (y <= rest ? y : rest + 
 // The most any creature reaches above and below its ground line, in metres,
 // as drawn (checked over whole races of every template by test/sim.test.ts).
 export const REACH_UP = 1.25, REACH_DOWN = 0.09;
+// Creatures are drawn big: the tallest pose may reach this share of a lane
+// into the lane behind it (feet always stay in their own lane).
+export const SPILL = 0.4;
+// Physics races every drawing at about a metre whatever its size on the pad;
+// on screen, a drawing the player made small stays small. Anything spanning
+// LOOK_FULL pad px or more (every house creature does) is drawn full size.
+const LOOK_FULL = 150, LOOK_MIN = 0.35;
+export const looks = (a: Anatomy) => Math.min(1, Math.max(LOOK_MIN, Math.max(a.box.w, a.box.h) / LOOK_FULL));
 const ease = (x: number) => 1 - (1 - Math.min(1, Math.max(0, x))) ** 3;
 
 interface Finish { who: number; place: number; time: number; at: number }
@@ -338,11 +346,12 @@ export class Renderer {
 
     // Every racer, yours included, is drawn at one scale for the whole race:
     // sized so the tallest pose any creature reaches fills the back (smallest)
-    // lane. Names sit beside the creature, not above it, so the whole lane
-    // height is the creature's. Nothing about a pose, a wingbeat or the
-    // camera changes the scale; only the canvas size does.
+    // lane and SPILL of the margin above it. Names sit beside the creature,
+    // not above it, so the whole lane height is the creature's. Nothing about
+    // a pose, a wingbeat or the camera changes the scale; only the canvas
+    // size does. A drawing made small on the pad is drawn smaller (looks).
     const laneH = P(0, (N - 1) * LANE_Z)[1] - P(0, N * LANE_Z)[1];
-    const k = (this.scale = Math.max(1, (laneH - 4 * dpr) / (REACH_UP + REACH_DOWN)));
+    const K = (this.scale = Math.max(1, (laneH * (1 + SPILL) - 4 * dpr) / (REACH_UP + REACH_DOWN)));
     const tags: { x: number; left: number; right: number; y: number; name: string; mine: boolean; idx: number; done: string | null }[] = [];
     const order = race.standings();
     let myTop = Infinity;
@@ -353,6 +362,7 @@ export class Renderer {
       const laneTop = P(0, (N - i) * LANE_Z)[1];
       const laneBottom = P(0, (N - 1 - i) * LANE_Z)[1];
       const gx = P(b.x, laneZ(i))[0];
+      const k = K * looks(r.anatomy);
       const gy = laneBottom - REACH_DOWN * k - 2 * dpr;
       if (gx < -3 * k || gx > W + 3 * k) continue;
       shadow(c, gx, gy, b.length * 0.42 * k, b.length * 0.42 * k * 0.22, b.y + b.bottom);
@@ -505,8 +515,9 @@ export function drawPreview(ctx: CanvasRenderingContext2D, W: number, H: number,
   ctx.fillRect(0, Math.round(ground), W, Math.max(1, dpr));
   if (pose) {
     const b = pose.body;
-    shadow(ctx, sx(b.x), ground, b.length * 0.42 * k, b.length * 0.42 * k * 0.2, b.y + b.bottom);
+    const kc = k * looks(pose.anatomy);
+    shadow(ctx, sx(b.x), ground, b.length * 0.42 * kc, b.length * 0.42 * kc * 0.2, b.y + b.bottom);
     const y = shownHeight(b.y, rest);
-    paintCreature(ctx, { ...pose, drop: b.y - y }, sx(b.x), ground - y * k, k);
+    paintCreature(ctx, { ...pose, drop: b.y - y }, sx(b.x), ground - y * kc, kc);
   }
 }

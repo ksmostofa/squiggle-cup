@@ -17,7 +17,7 @@ for (const [width, height] of sizes) {
 
     const frames = await page.evaluate(async () => {
       const urls = ['/src/race.ts', '/src/render.ts', '/src/bots.ts', '/src/rng.ts', '/src/course.ts', '/src/analyze.ts', '/src/drawing.ts'];
-      const [{ Race, COUNTDOWN }, { Renderer }, { rivalDrawing }, { mulberry32 }, { INKS }, { analyze }, { canonical }] = await Promise.all(urls.map((url) => import(url)));
+      const [{ Race, COUNTDOWN }, { Renderer, SPILL, REACH_UP, REACH_DOWN }, { rivalDrawing }, { mulberry32 }, { INKS }, { analyze }, { canonical }] = await Promise.all(urls.map((url) => import(url)));
       const canvas = document.querySelector<HTMLCanvasElement>('.race canvas.stage')!;
       const entries = ['quadruped', 'flyer', 'hopper', 'worm', 'roller'].map((kind, i) => {
         const anatomy = analyze(canonical(rivalDrawing(mulberry32(40 + i), INKS, kind)));
@@ -64,8 +64,14 @@ for (const [width, height] of sizes) {
           }
           return box;
         });
+        // Creatures are drawn big enough to reach up over the lane behind, by
+        // at most SPILL of a (back, smallest) lane; never down onto the lane
+        // in front. Entry i races in lane i, lane 0 at the back.
+        const dpr = Math.min(2, devicePixelRatio || 1);
+        const spillPx = (SPILL * view.scale * (REACH_UP + REACH_DOWN)) / (1 + SPILL) + 3 * dpr;
+        const reachesUp = (back: Rect, front: Rect) => front.bottom > back.bottom && back.bottom - front.top <= spillPx;
         const collisions = boxes.flatMap((box, i) => [
-          ...boxes.slice(i + 1).filter((other) => intersects(box, other)).map(() => `creature ${i} overlaps another creature`),
+          ...boxes.slice(i + 1).filter((other) => intersects(box, other) && !reachesUp(box, other)).map(() => `creature ${i} overlaps another creature`),
           ...text.filter((label) => intersects(box, label)).map((label) => `creature ${i} overlaps ${label.text}`),
         ]);
         for (let i = 0; i < text.length; i++) {
@@ -73,7 +79,7 @@ for (const [width, height] of sizes) {
             if (intersects(text[i], other)) collisions.push(`text ${text[i].text} overlaps ${other.text}`);
           }
         }
-        return { time, boxes, collisions, text, dpr: Math.min(2, devicePixelRatio || 1) };
+        return { time, boxes, collisions, text, dpr };
       });
     });
     await testInfo.attach('rendered-frames', { body: JSON.stringify(frames), contentType: 'application/json' });
