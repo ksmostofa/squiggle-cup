@@ -10,6 +10,8 @@ export type Cast =
   | { k: 'draw'; round: number }
   | { k: 'drawing'; round: number; code: string; name: string }
   | { k: 'race'; round: number; seed: number; entrants: Entrant[] }
+  | { k: 'tap'; round: number; tick: number }
+  | { k: 'taps'; round: number; ticks: number[] }
   | { k: 'lobby' };
 
 type ServerMsg =

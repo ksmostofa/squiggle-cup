@@ -246,3 +246,27 @@ canvas.stage { display: block; width: 100%; height: 108px; }
   *, *::before, *::after { animation: none !important; transition: none !important; }
   .screen { opacity: 1; transform: none; }
 }
+
+/* ---------- Rhythm: tap on your creature's beat ---------- */
+.race { touch-action: manipulation; user-select: none; -webkit-user-select: none; }
+.beat {
+  position: absolute; z-index: 4; left: 50%; bottom: calc(26px + env(safe-area-inset-bottom));
+  width: 64px; height: 64px; margin-left: -32px; padding: 0; border: 0; border-radius: 50%;
+  background: none; opacity: 0; transition: opacity 0.4s var(--ease);
+}
+.beat.on { opacity: 1; }
+.beat.off { opacity: 0; }
+.beat .dot { position: absolute; inset: 22px; border-radius: 50%; background: var(--ink); transition: background 0.2s; }
+.beat .ring {
+  position: absolute; inset: 0; border-radius: 50%; border: 1.5px solid var(--ink);
+  transform: scale(calc(0.42 + 1.1 * (1 - var(--f, 0)))); opacity: calc(0.25 + 0.75 * var(--f, 0));
+}
+.beat.hit .dot { background: var(--accent); animation: beat-hit 0.32s var(--ease); }
+.beat.miss .dot { animation: beat-miss 0.3s; }
+@keyframes beat-hit { 0% { transform: scale(1.6); } 100% { transform: none; } }
+@keyframes beat-miss { 25% { transform: translateX(-3px); } 75% { transform: translateX(3px); } }
+.beat .groove { position: absolute; left: -18px; right: -18px; top: 74px; height: 2px; background: var(--line); }
+.beat .groove i { position: absolute; inset: 0; background: var(--accent); transform-origin: left; transform: scaleX(var(--g, 0)); }
+.beat .hint { position: absolute; left: 50%; top: -24px; transform: translateX(-50%); white-space: nowrap; font-size: 10px; color: var(--grey); letter-spacing: 0.14em; transition: opacity 0.4s; }
+.beat.hit .hint, .beat.miss .hint { opacity: 0; }
+@media (min-width: 700px) { .beat { left: 64px; margin-left: 0; bottom: 40px; } }

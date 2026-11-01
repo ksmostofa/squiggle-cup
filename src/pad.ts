@@ -259,7 +259,7 @@ export class Pad {
       live.acc += dt;
       while (live.acc >= DT) {
         live.acc -= DT;
-        const mult = live.t < 0 ? 0 : pace(null, live.anatomy.kind, live.t);
+        const mult = live.t < 0 ? 0 : pace(live.anatomy.kind, live.t);
         for (let i = 0; i < SUBSTEPS; i++) live.body.step(DT / SUBSTEPS, this.course, mult);
         live.t += DT;
       }

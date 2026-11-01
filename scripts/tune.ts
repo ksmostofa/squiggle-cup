@@ -1,7 +1,7 @@
 import { type Kind, analyze } from '../src/analyze';
 import { RIVAL_KINDS, rivalDrawing } from '../src/bots';
 import { INKS } from '../src/course';
-import { PROFILES } from '../src/creature';
+import { PROFILES, stats } from '../src/creature';
 import { Race } from '../src/race';
 import { mulberry32 } from '../src/rng';
 
@@ -21,12 +21,14 @@ function times(kind: Kind): number[] {
   return pools.get(kind)!.map((a, i) => {
     const r = new Race([{ anatomy: a!, name: kind, kind: 'player' }], (i * 2654435761 + 11) >>> 0);
     while (!r.over) r.step();
-    return r.racers[0].finishTime ?? 60;
+    return (r.racers[0].finishTime ?? 60) * (0.95 + 0.1 * stats(a!).quality);
   });
 }
+// Fair means equal quality runs an equal time whatever the kind, so take the
+// drawing-quality bonus back out (time scales as 1 / speed) before comparing.
 const mean = (kind: Kind) => { const t = times(kind); return t.reduce((a, b) => a + b, 0) / t.length; };
 
-for (let it = 0; it < 4; it++) {
+for (let it = 0; it < Number(process.env.PASSES ?? 6); it++) {
   const line: string[] = [];
   for (const kind of RIVAL_KINDS) {
     const t = mean(kind);
@@ -39,7 +41,7 @@ for (let it = 0; it < 4; it++) {
 }
 // Equal means aren't enough: a kind with a wider spread takes more of the
 // fastest times. Nudge each kind until its win rate in mixed fields of five is fair.
-for (let it = 0; it < 6; it++) {
+for (let it = 0; it < Number(process.env.WIN_PASSES ?? 0); it++) {
   const pool = new Map(RIVAL_KINDS.map((k) => [k, times(k)]));
   const rng = mulberry32(it + 1);
   const wins = new Map<Kind, number>(), seen = new Map<Kind, number>();

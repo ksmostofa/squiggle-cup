@@ -1,7 +1,7 @@
 import './style.css';
 import { type Anatomy, type Kind, type Stroke, analyze } from './analyze';
 import { isMuted, setMuted, sfx, unlock } from './audio';
-import { RIVAL_KINDS, rivalDrawing } from './bots';
+import { rivalDrawing } from './bots';
 import { INKS, LANES } from './course';
 import { DT, KINDS } from './creature';
 import { type Dare, decode, encode } from './encode';
@@ -13,9 +13,10 @@ import { Race, type Racer } from './race';
 import { Renderer } from './render';
 import { mulberry32 } from './rng';
 
-// Flow: home → (room lobby) → everyone draws at once → the race runs itself
-// → results → rematch / redraw / share. Races are deterministic, so a room
-// shares only drawings and a seed and every device runs the same race.
+// Flow: home → (room lobby) → everyone draws at once → the race runs itself,
+// players tap to their creature's beat → results → rematch / redraw / share.
+// Races are deterministic, so a room shares only drawings and tap logs and
+// every device replays the same race.
 
 const app = document.getElementById('app')!;
 const esc = (s: string) => s.replace(/[&<>"']/g, (c) => `&#${c.charCodeAt(0)};`);
@@ -43,19 +44,17 @@ function fromCode(code: string): { strokes: Stroke[]; anatomy: Anatomy; name: st
 // The exact strokes every other device will see.
 const canonical = (strokes: Stroke[]) => unpack(decode(codeOf(strokes, ''))!.strokes);
 
-// Bots fill the empty lanes, drawn from the seed, so every device draws the same ones.
-function field(people: Contender[], seed: number): Contender[] {
-  const rng = mulberry32(seed ^ 0x51ab);
-  const out = people.slice(0, LANES);
-  const kinds: Kind[] = RIVAL_KINDS.slice();
-  while (out.length < LANES) {
-    const kind = kinds.splice(Math.floor(rng() * kinds.length), 1)[0] ?? RIVAL_KINDS[0];
-    const strokes = canonical(rivalDrawing(rng, INKS, kind));
-    const a = analyze(strokes);
-    if (a) out.push({ id: `bot${out.length}`, name: formalName(a, rng), strokes, anatomy: a, bot: true });
-  }
-  return out;
-}
+// The house creatures fill empty lanes: always the same four, so they run
+// the same times every race and work as par for the course.
+const HOUSE: Contender[] = (['quadruped', 'flyer', 'worm', 'roller'] as Kind[]).flatMap((kind, i) => {
+  const rng = mulberry32(0x5c0 + i * 977);
+  const strokes = canonical(rivalDrawing(rng, INKS, kind));
+  const a = analyze(strokes);
+  return a ? [{ id: `bot${i}`, name: formalName(a, rng), strokes, anatomy: a, bot: true }] : [];
+});
+const field = (people: Contender[], _seed = 0): Contender[] => [...people.slice(0, LANES), ...HOUSE].slice(0, LANES);
+const entriesOf = (cs: Contender[], focus: string, taps?: Map<string, number[]>) =>
+  cs.map((c) => ({ anatomy: c.anatomy, name: c.name, kind: c.id === focus ? 'player' as const : 'rival' as const, id: c.id, bot: c.bot, taps: taps?.get(c.id) }));
 
 const newSeed = () => (Math.random() * 2 ** 32) >>> 0;
 
@@ -212,6 +211,11 @@ function onCast(from: string, c: Cast) {
     const people = c.entrants.map((e) => { const d = fromCode(e.code); return d ? { id: e.id, name: e.name || d.name, strokes: d.strokes, anatomy: d.anatomy } : null; })
       .filter((x): x is Contender => !!x);
     runRace(field(people, c.seed), c.seed, r.id, { kind: 'room', room: r }, c.entrants);
+  } else if (c.k === 'tap') {
+    if (from === r.id || !live || c.round !== live.round) return;
+    live.race.tap(live.ids.indexOf(from), c.tick);
+  } else if (c.k === 'taps') {
+    if (c.round === round) logs.set(from, c.ticks);
   } else if (c.k === 'lobby') lobby();
 }
 
@@ -270,9 +274,18 @@ function submit(mode: Mode, r: PadResult, el: HTMLElement) {
 
 // ---------- Race ----------
 
-function runRace(cs: Contender[], seed: number, focus: string, mode: Mode, entrants?: Entrant[], skip = 0) {
+// The live race, so taps arriving from the room reach the right lane.
+let live: { race: Race; round: number; ids: string[] } | null = null;
+const logs = new Map<string, number[]>(); // finished tap logs this round, by player id
+
+function runRace(cs: Contender[], seed: number, focus: string, mode: Mode, entrants?: Entrant[], skip = 0, taps?: Map<string, number[]>) {
   heat++;
-  const race = new Race(cs.map((c) => ({ anatomy: c.anatomy, name: c.name, kind: c.id === focus ? 'player' : 'rival', id: c.id })), seed);
+  const race = new Race(entriesOf(cs, focus, taps), seed);
+  const ids = cs.map((c) => c.id);
+  const mine = race.player;
+  const replaying = !!taps;
+  live = { race, round, ids };
+  if (mode.kind === 'room') logs.clear();
   for (let i = 0; i < skip && !race.over; i++) race.step();
   const el = screen('race', `
     <canvas class="stage" aria-label="The race"></canvas>
@@ -281,13 +294,28 @@ function runRace(cs: Contender[], seed: number, focus: string, mode: Mode, entra
       <div class="tb-cell clock-cell"><span class="mono k">TIME</span><span class="mono v clock">00.00</span></div>
       <ol class="standings mono" aria-live="off"></ol>
     </header>
+    ${mine >= 0 && !replaying ? `<button class="beat" aria-label="Tap on the beat"><i class="ring"></i><i class="dot"></i><b class="groove"><i></i></b><span class="mono hint">TAP ON THE BEAT</span></button>` : ''}
     <div class="count mono" aria-live="assertive"></div>`);
   const canvas = el.querySelector<HTMLCanvasElement>('.stage')!;
   const view = new Renderer(canvas, race);
   const clock = el.querySelector<HTMLElement>('.clock')!;
   const count = el.querySelector<HTMLElement>('.count')!;
   const standings = el.querySelector<HTMLElement>('.standings')!;
-  let acc = 0, last = performance.now(), overAt = 0, shown = '', frame = 0, raf = 0;
+  const beatEl = el.querySelector<HTMLElement>('.beat');
+  const me = race.playerRacer;
+
+  // Input: tap anywhere (or press space / any key) on your creature's beat.
+  const tap = (e: Event) => {
+    if (!me || replaying || race.over || me.done) return;
+    e.preventDefault();
+    const tick = race.tick;
+    race.tap(mine, tick);
+    if (mode.kind === 'room') mode.room.cast({ k: 'tap', round, tick });
+  };
+  const onKey = (e: KeyboardEvent) => { if (!e.repeat && (e.code === 'Space' || e.code === 'Enter' || e.key.length === 1)) tap(e); };
+  if (me && !replaying) { el.addEventListener('pointerdown', tap); addEventListener('keydown', onKey); }
+
+  let acc = 0, last = performance.now(), overAt = 0, shown = '', frame = 0, raf = 0, lastBeat = -1, sentLog = false;
   const loop = (now: number) => {
     const dt = Math.min(0.1, (now - last) / 1000);
     last = now;
@@ -298,8 +326,22 @@ function runRace(cs: Contender[], seed: number, focus: string, mode: Mode, entra
       if (e.type === 'finish' && (e.value === 1 || race.racers[e.who].isPlayer)) sfx.fanfare();
       if (e.type === 'photo') sfx.shutter();
       if (e.type === 'start') sfx.click();
+      if (beatEl && e.who === mine && (e.type === 'hit' || e.type === 'miss')) {
+        beatEl.classList.remove('hit', 'miss'); void beatEl.offsetWidth; beatEl.classList.add(e.type);
+        if (e.type === 'hit') sfx.blink();
+      }
     }
     const t = race.time;
+    // The beat: the ring pulses on it, with a soft click to tap along to.
+    if (beatEl && me) {
+      const ph = (t - me.start) / me.beat;
+      const k = Math.floor(ph), f = ph - k;
+      beatEl.style.setProperty('--f', String(t < me.start ? 0 : f));
+      beatEl.style.setProperty('--g', me.groove.toFixed(3));
+      beatEl.classList.toggle('on', t >= me.start - 1 && !me.done);
+      if (t >= me.start && k !== lastBeat && !me.done) { lastBeat = k; sfx.click(); }
+      if (me.done) beatEl.classList.add('off');
+    }
     const label = t < -2 ? '3' : t < -1 ? '2' : t < 0 ? '1' : t < 0.7 ? 'GO' : '';
     if (label !== shown) {
       shown = label;
@@ -308,25 +350,38 @@ function runRace(cs: Contender[], seed: number, focus: string, mode: Mode, entra
       count.classList.remove('pop'); void count.offsetWidth; if (label) count.classList.add('pop');
       if (label && label !== 'GO') sfx.pluck();
     }
-    const mine = race.playerRacer;
-    const shownT = Math.max(0, mine?.finishTime ?? t);
+    const shownT = Math.max(0, me?.finishTime ?? t);
     clock.textContent = shownT.toFixed(2).padStart(5, '0');
     if (frame++ % 6 === 0) standings.innerHTML = race.standings().map((r, i) =>
       `<li class="${r.isPlayer ? 'me' : ''}${r.done ? ' done' : ''}"><span class="p">${i + 1}</span><span class="l">${pad2(r.idx + 1)}</span><span class="n">${esc(r.name)}</span><span class="d">${r.finishTime != null ? r.finishTime.toFixed(2) : `${Math.max(0, r.x).toFixed(1)} m`}</span></li>`).join('');
     view.draw(now, dt);
     if (race.over) {
       overAt ||= now;
-      if (now - overAt > 1800) { results(race, seed, cs, mode, entrants); return; }
+      if (mode.kind === 'room' && !sentLog) { sentLog = true; mode.room.cast({ k: 'taps', round, ticks: me?.log ?? [] }); }
+      // In a room, wait (briefly) for everyone's tap log, then replay them all
+      // exactly so every device shows the same result.
+      const people = cs.filter((c) => !c.bot);
+      const ready = mode.kind !== 'room' || people.every((c) => logs.has(c.id)) || now - overAt > 5000;
+      if (now - overAt > 1800 && ready) {
+        let final = race;
+        if (mode.kind === 'room') {
+          final = new Race(entriesOf(cs, focus, logs), seed);
+          while (!final.over) final.step();
+        }
+        const allTaps = new Map(race.racers.filter((r) => !r.bot).map((r) => [r.id ?? '', mode.kind === 'room' ? logs.get(r.id ?? '') ?? [] : r.log.length ? r.log : taps?.get(r.id ?? '') ?? []]));
+        results(final, seed, cs, mode, entrants, allTaps);
+        return;
+      }
     }
     raf = requestAnimationFrame(loop);
   };
   raf = requestAnimationFrame(loop);
-  stopRace = () => cancelAnimationFrame(raf);
+  stopRace = () => { cancelAnimationFrame(raf); removeEventListener('keydown', onKey); live = null; };
 }
 
 // ---------- Results ----------
 
-function results(race: Race, seed: number, cs: Contender[], mode: Mode, entrants?: Entrant[]) {
+function results(race: Race, seed: number, cs: Contender[], mode: Mode, entrants?: Entrant[], taps = new Map<string, number[]>()) {
   const order = race.standings();
   const mine = race.playerRacer;
   const watching = mode.kind === 'replay' || !mine;
@@ -370,7 +425,7 @@ function results(race: Race, seed: number, cs: Contender[], mode: Mode, entrants
   el.querySelector('.again')?.addEventListener('click', () => {
     sfx.click();
     if (mode.kind === 'room') { if (host && entrants) mode.room.cast({ k: 'race', round: round + 1, seed: newSeed(), entrants }); }
-    else if (mode.kind === 'replay') runRace(cs, seed, mode.sharer, mode);
+    else if (mode.kind === 'replay') runRace(cs, seed, mode.sharer, mode, undefined, 0, taps);
     else { const s = newSeed(); runRace(field(people, s), s, 'me', mode); }
   });
   el.querySelector('.redraw')?.addEventListener('click', () => {
@@ -382,7 +437,8 @@ function results(race: Race, seed: number, cs: Contender[], mode: Mode, entrants
   el.querySelector('.share')!.addEventListener('click', async () => {
     sfx.click();
     const focus = people.findIndex((c) => c.id === (mine?.id ?? ''));
-    const link = `${location.origin}${location.pathname}#race=${seed}.${people.map((c) => codeOf(c.strokes, c.name)).join('.')}&me=${Math.max(0, focus)}`;
+    const tapCode = people.map((c) => packTaps(taps.get(c.id) ?? [])).join('.');
+    const link = `${location.origin}${location.pathname}#race=${seed}.${people.map((c) => codeOf(c.strokes, c.name)).join('.')}&me=${Math.max(0, focus)}${/[^.]/.test(tapCode) ? `&taps=${tapCode}` : ''}`;
     const toast = el.querySelector<HTMLElement>('.toast')!;
     try {
       if (navigator.share && matchMedia('(pointer: coarse)').matches) { await navigator.share({ text: `${subject.name} came ${PLACINGS[place]} in Squiggle Cup. Draw something faster.`, url: link }); return; }
@@ -396,13 +452,19 @@ function results(race: Race, seed: number, cs: Contender[], mode: Mode, entrants
 
 // ---------- Shared races: #race=<seed>.<code>.<code>&me=<i> ----------
 
-function readShared(): { seed: number; people: Contender[]; focus: number } | null {
+// Tap logs travel as base-36 gaps between ticks, '-'-separated, one per person.
+const packTaps = (ticks: number[]) => ticks.map((t, i) => (t - (ticks[i - 1] ?? 0)).toString(36)).join('-');
+const unpackTaps = (s: string) => { let t = 0; return s ? s.split('-').map((d) => (t += parseInt(d, 36) || 0)) : []; };
+
+function readShared(): { seed: number; people: Contender[]; focus: number; taps: Map<string, number[]> } | null {
   const m = /[#&]race=(\d+)\.([A-Za-z0-9_.-]+)/.exec(location.hash);
   if (!m) return null;
   const people = m[2].split('.').map((code, i) => { const d = fromCode(code); return d ? { id: `l${i}`, name: d.name || `Player ${i + 1}`, strokes: d.strokes, anatomy: d.anatomy } : null; })
     .filter((x): x is Contender => !!x);
   const focus = Number(/[#&]me=(\d+)/.exec(location.hash)?.[1] ?? 0);
-  return people.length ? { seed: Number(m[1]) >>> 0, people, focus: Math.min(focus, people.length - 1) } : null;
+  const tapCodes = (/[#&]taps=([0-9a-z.-]*)/.exec(location.hash)?.[1] ?? '').split('.');
+  const taps = new Map(people.map((p, i) => [p.id, unpackTaps(tapCodes[i] ?? '')]));
+  return people.length ? { seed: Number(m[1]) >>> 0, people, focus: Math.min(focus, people.length - 1), taps } : null;
 }
 
 // ---------- Boot ----------
@@ -421,7 +483,7 @@ if (demo) {
   if (demo === 'draw') drawScreen({ kind: 'solo' }, params.has('empty') ? [] : strokes);
   else if (demo === 'race') runRace(cs, 1234, 'me', { kind: 'solo' }, undefined, Math.round((Number(params.get('t') ?? 0) + 3) / DT));
   else if (demo === 'results') {
-    const race = new Race(cs.map((c) => ({ anatomy: c.anatomy, name: c.name, kind: c.id === 'me' ? 'player' : 'rival', id: c.id })), 1234);
+    const race = new Race(entriesOf(cs, 'me'), 1234);
     while (!race.over) race.step();
     heat = 1;
     results(race, 1234, cs, { kind: 'solo' });
@@ -432,7 +494,7 @@ if (demo) {
   } else home();
 } else if (shared) {
   const cs = field(shared.people, shared.seed);
-  runRace(cs, shared.seed, shared.people[shared.focus].id, { kind: 'replay', people: shared.people, sharer: shared.people[shared.focus].id });
+  runRace(cs, shared.seed, shared.people[shared.focus].id, { kind: 'replay', people: shared.people, sharer: shared.people[shared.focus].id }, undefined, 0, shared.taps);
 } else if (roomInHash()) {
   connect(store.get('sc:name'), roomInHash()!);
 } else home();

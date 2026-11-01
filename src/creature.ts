@@ -6,9 +6,8 @@ import { bbox } from './geom';
 // others, tuned so expected finish times fall in a narrow band:
 //   top    – cruising speed it settles at, m/s
 //   ramp   – seconds to reach it (slow starters cruise faster)
-//   streak – how much its pace wobbles, seeded (steady vs streaky)
 // Within a kind, a better-drawn creature (the proportions that kind rewards)
-// runs a few percent faster; that, plus a little seeded luck, decides races.
+// runs a few percent faster. No luck: the drawing (and your rhythm) decides.
 
 export const DT = 1 / 60;
 
@@ -25,20 +24,20 @@ export const KINDS: Record<Kind, KindInfo> = {
   scribble: { label: 'Scribble', verb: 'flails', blurb: 'Pure chaos. Sometimes it works.' },
 };
 
-export interface Profile { top: number; ramp: number; streak: number }
+export interface Profile { top: number; ramp: number }
 // Every kind has the same expected finish time (about 15.3 s over 40 m) and
-// the same chance to win a mixed field: tops calibrated by scripts/tune.ts,
+// overlapping ranges, so the drawing decides: tops calibrated by scripts/tune.ts,
 // checked on a separate pool of drawings by test/balance.test.ts.
 export const PROFILES: Record<Kind, Profile> = {
-  biped: { top: 2.618, ramp: 1.6, streak: 0.06 },
-  quadruped: { top: 2.68, ramp: 2.6, streak: 0.03 },
-  centipede: { top: 2.674, ramp: 0.9, streak: 0.02 },
-  hopper: { top: 2.637, ramp: 2.4, streak: 0.12 },
-  flyer: { top: 2.887, ramp: 5.6, streak: 0.05 },
-  roller: { top: 2.788, ramp: 4.8, streak: 0.04 },
-  worm: { top: 2.638, ramp: 0.6, streak: 0.04 },
-  jelly: { top: 2.613, ramp: 0.8, streak: 0.1 },
-  scribble: { top: 2.7, ramp: 2.2, streak: 0.3 },
+  biped: { top: 2.707, ramp: 1.2 },
+  quadruped: { top: 2.736, ramp: 1.8 },
+  centipede: { top: 2.687, ramp: 0.8 },
+  hopper: { top: 2.726, ramp: 1.6 },
+  flyer: { top: 2.77, ramp: 2.6 },
+  roller: { top: 2.8, ramp: 2.4 },
+  worm: { top: 2.722, ramp: 0.6 },
+  jelly: { top: 2.733, ramp: 0.8 },
+  scribble: { top: 2.72, ramp: 1.4 },
 };
 
 export interface Stats {
