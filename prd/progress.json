@@ -1,18 +1,19 @@
 {
   "handoff": {
     "updated": "2026-11-01",
-    "summary": "Entered in the trmi × Lovhack × Nexus Hackathon 2026 (theme: Multiplayer Everything). Submit on Devpost by Mon Nov 2, 5:00 AM JST (aim for 4:30). PRD §28 replaces all other scope until then: 2–4 player rooms by code, simultaneous draw, one Best in Show race, results, rematch, deployed URL. Multiplayer is host-authoritative (host browser simulates, relay forwards), so cross-browser determinism is not needed yet. Existing code: geometry, RNG, drawing analysis, Rapier creature. Nothing runs yet.",
+    "summary": "Direction changed at 21:30 JST (PRD rewritten; §28 updated). The game is now: draw a creature, it races ITSELF in its own lane on a clean white architectural sheet seen tilt-shift. No tapping, no hazards, no dark, no Rapier. Rooms only share drawings + one seed; every client simulates the same race and the host's results are authoritative. Fairness across creature kinds is required. A working simulation start (self-running races, 9 kinds, deterministic, headless tests) is on branch m0-prototype; main still has the old Best in Show code.",
     "next": [
-      "Captain: push repo to GitHub (main branch), create the shared trmi project, invite both teammates",
-      "Seat B: index.html + src/main.ts so `npm run dev` shows a page, then draw pad + ink meter",
-      "Seat A: src/race.ts + src/course.ts (Best in Show, simplified) + bot pilot, with a headless race test",
-      "Seat C: server/ relay (Cloudflare Worker + Durable Object) and src/net.ts room join by 4-letter code"
+      "Seat A: bring src/body.ts, analyze.ts, race.ts, creature.ts, bots.ts, dmath.ts, test/ over from branch m0-prototype; fix wing detection and the snake sliding backwards; add the fairness balance test",
+      "Seat B: the Sheet renderer (white architectural page, lanes, tilt-shift), draw screen with live preview, lobby/draw/race/results screens",
+      "Seat C: relay + src/net.ts with start{seed, drawings} and host results; deploy to Pages",
+      "Everyone: re-read PRD §2, §5, §7, §8 and §28 before prompting; prd/brief.md is a full brief for a fresh agent"
     ],
     "open": [
+      "Team members already building the old §28 (Best in Show, tapping) need to switch; main has trmi commits for the old index.html and src/main.ts",
       "Deploy target needs a Cloudflare account and `wrangler login` (fallback: Node ws relay on a free host)",
-      "Deadline conflict: Devpost 5:00 AM JST vs trmi 6:00 AM JST; ask in Discord, submit by 5:00 regardless",
-      "Determinism (Math.atan2/exp/hypot in src/creature.ts, src/geom.ts) is deferred: not needed with host-authoritative rooms",
-      "No test harness yet, so nothing can be marked verified"
+      "Deadline conflict: Devpost 5:00 AM JST vs trmi 6:00 AM JST; submit by 5:00 regardless",
+      "Motion quality is judged by watching it; the user found earlier gaits unconvincing",
+      "Rapier is still in package.json but no longer used by the new direction"
     ]
   },
   "statuses": {
@@ -24,126 +25,269 @@
   },
   "milestones": [
     {
-      "id": "H", "title": "Hackathon build (PRD §28)",
-      "exit": "3 people on different networks join one room by code, draw, race and see results on a public URL; rematch works 3× in a row; Devpost submitted before 5:00 AM JST Nov 2",
+      "id": "H",
+      "title": "Hackathon build (PRD §28)",
+      "exit": "PRD §28.7: 3 people on different networks race in one room; every kind moves like its shape; balance test passes; submitted before 5:00 AM JST",
       "features": [
-        { "title": "GitHub repo + shared trmi project", "section": "28.1", "status": "planned" },
-        { "title": "Runnable entry point (index.html, src/main.ts)", "section": "28.5", "status": "planned" },
-        { "title": "Draw pad with ink meter", "section": "6.1", "status": "in-progress", "note": "Only ink cost (inkUsed in src/analyze.ts)" },
-        { "title": "Reading the drawing", "section": "6.3", "status": "built", "note": "src/analyze.ts" },
-        { "title": "Physics creature, locomotion, leap, upright", "section": "7.1", "status": "built", "note": "src/creature.ts" },
-        { "title": "Best in Show course (simplified)", "section": "28.3", "status": "planned" },
-        { "title": "Race loop: countdown, finish, nudge, ranking", "section": "9.1", "status": "in-progress", "note": "Handler nudge only" },
-        { "title": "Bot pilot for empty seats", "section": "11.1", "status": "planned" },
-        { "title": "Canvas 2D renderer with googly eyes", "section": "18.1", "status": "in-progress", "note": "Googly pupil physics only" },
-        { "title": "Results: podium, awards, comparison fact, rematch", "section": "9.2", "status": "planned" },
-        { "title": "Relay server (rooms by 4-letter code)", "section": "28.4", "status": "planned" },
-        { "title": "Host-authoritative snapshots + guest inputs", "section": "28.4", "status": "planned" },
-        { "title": "Lobby, draw, reveal, race, results screens", "section": "28.2", "status": "planned" },
-        { "title": "Deployed public URL", "section": "28.7", "status": "planned" },
-        { "title": "3-player online playtest", "section": "28.7", "status": "planned" },
-        { "title": "Demo video", "section": "28.2", "status": "planned" },
-        { "title": "Devpost submission + trmi write-up", "section": "28.1", "status": "planned" }
+        {
+          "title": "GitHub repo + shared trmi project",
+          "section": "28.1",
+          "status": "built",
+          "note": "origin/main has trmi commits"
+        },
+        {
+          "title": "Drawing pad: 20 s timer, no ink limit",
+          "section": "6.1",
+          "status": "in-progress",
+          "note": "Built on branch m0-prototype (cave look); needs the Sheet look"
+        },
+        {
+          "title": "Reading the drawing, reliable wings",
+          "section": "6.3",
+          "status": "in-progress",
+          "note": "On branch m0-prototype: 9 kinds classified; wings often missed"
+        },
+        {
+          "title": "Creature movement for every kind",
+          "section": "7.2",
+          "status": "in-progress",
+          "note": "On branch m0-prototype: all kinds finish in tests; snake slides backwards; user finds motion unconvincing"
+        },
+        {
+          "title": "Live preview matches the race",
+          "section": "6.2",
+          "status": "in-progress",
+          "note": "On branch m0-prototype: preview runs the same body physics; needs the Sheet look"
+        },
+        {
+          "title": "Fairness balance test",
+          "section": "8",
+          "status": "planned",
+          "note": "Flyers won too often in earlier builds"
+        },
+        {
+          "title": "The Sheet: architectural page, lanes, tilt-shift",
+          "section": "5",
+          "status": "planned"
+        },
+        {
+          "title": "Race flow and results, rematch / redraw",
+          "section": "9",
+          "status": "in-progress",
+          "note": "Self-running race + results on branch m0-prototype"
+        },
+        {
+          "title": "Bots fill empty lanes",
+          "section": "11.2",
+          "status": "in-progress",
+          "note": "Generated rival drawings of every kind on branch m0-prototype"
+        },
+        {
+          "title": "Relay server (rooms by 4-letter code)",
+          "section": "28.4",
+          "status": "planned"
+        },
+        {
+          "title": "Shared seed race + host results",
+          "section": "28.4",
+          "status": "planned"
+        },
+        {
+          "title": "Lobby, draw, race, results screens",
+          "section": "17",
+          "status": "planned"
+        },
+        {
+          "title": "Deployed public URL",
+          "section": "28.7",
+          "status": "planned"
+        },
+        {
+          "title": "3-player online playtest",
+          "section": "28.7",
+          "status": "planned"
+        },
+        {
+          "title": "Demo video",
+          "section": "28.2",
+          "status": "planned"
+        },
+        {
+          "title": "Devpost submission + trmi write-up",
+          "section": "28.1",
+          "status": "planned"
+        }
       ]
     },
     {
-      "id": "M0", "title": "Core proof",
-      "exit": "3 of 5 strangers laugh within 30 s and press rematch. Ugly creatures are fun to race. No sliding exploit wins",
+      "id": "M0",
+      "title": "The creature",
+      "exit": "Every kind looks alive in the preview; balance test passes",
       "features": [
-        { "title": "Drawing pad", "section": "6.1", "status": "in-progress", "note": "Only ink cost (inkUsed in src/analyze.ts)" },
-        { "title": "Live drawing feedback", "section": "6.2", "status": "planned" },
-        { "title": "Reading the drawing", "section": "6.3", "status": "built", "note": "src/analyze.ts" },
-        { "title": "Compact encoding", "section": "6.4", "status": "planned" },
-        { "title": "Dare links", "section": "14.2", "status": "planned" },
-        { "title": "Physics creature", "section": "7.1", "status": "built", "note": "src/creature.ts" },
-        { "title": "Spoke-model locomotion", "section": "7.2", "status": "built", "note": "src/creature.ts" },
-        { "title": "Leap", "section": "7.3", "status": "built", "note": "src/creature.ts" },
-        { "title": "Staying upright and flips", "section": "7.4", "status": "built", "note": "src/creature.ts" },
-        { "title": "Anti-exploit rules", "section": "7.5", "status": "in-progress", "note": "Torque cap only" },
-        { "title": "Controls and feel", "section": "8", "status": "planned" },
-        { "title": "Race flow and ranking", "section": "9.1", "status": "in-progress", "note": "Handler nudge only" },
-        { "title": "Basic results screen", "section": "9.2", "status": "planned" },
-        { "title": "Best in Show course", "section": "5.1", "status": "planned" },
-        { "title": "Quick Race vs 1–3 bots", "section": "11.1", "status": "planned" },
-        { "title": "Canvas 2D renderer", "section": "18.1", "status": "planned" }
+        {
+          "title": "Reading the drawing",
+          "section": "6.3",
+          "status": "in-progress",
+          "note": "On branch m0-prototype"
+        },
+        {
+          "title": "Kinds and gaits",
+          "section": "6.4",
+          "status": "in-progress",
+          "note": "On branch m0-prototype"
+        },
+        {
+          "title": "Creature movement",
+          "section": "7.2",
+          "status": "in-progress",
+          "note": "On branch m0-prototype"
+        },
+        {
+          "title": "Determinism",
+          "section": "7.4",
+          "status": "in-progress",
+          "note": "Same-machine repeat hash verified by npm test on branch m0-prototype; cross-browser not checked"
+        },
+        {
+          "title": "Live preview",
+          "section": "6.2",
+          "status": "in-progress",
+          "note": "On branch m0-prototype"
+        },
+        {
+          "title": "Fairness and balance",
+          "section": "8",
+          "status": "planned"
+        },
+        {
+          "title": "Compact encoding",
+          "section": "6.5",
+          "status": "verified",
+          "note": "Round trip and idempotent re-encode covered by npm test on branch m0-prototype"
+        }
       ]
     },
     {
-      "id": "M1", "title": "Five venues",
-      "exit": "Every venue is readable and fun on a phone; determinism matches across browsers",
+      "id": "M1",
+      "title": "The Sheet",
+      "exit": "Looks award-level on a phone; a full solo race works",
       "features": [
-        { "title": "Deterministic simulation (cross-browser)", "section": "23", "status": "planned" },
-        { "title": "Googly eyes, jiggle, squash", "section": "7.6", "status": "in-progress", "note": "Googly pupils only" },
-        { "title": "STOMP", "section": "5.2", "status": "planned" },
-        { "title": "Ochre", "section": "5.3", "status": "planned" },
-        { "title": "Fog", "section": "5.4", "status": "planned" },
-        { "title": "Tug Day vs bots", "section": "5.5", "status": "planned" },
-        { "title": "Handler and leash", "section": "5.1", "status": "planned" },
-        { "title": "Formal names, underdog swings", "section": "10.1", "status": "planned" },
-        { "title": "Deadpan commentary", "section": "10.2", "status": "planned" },
-        { "title": "Awards", "section": "10.3", "status": "planned" },
-        { "title": "Fail detector", "section": "10.4", "status": "planned" },
-        { "title": "Judges' scorecards", "section": "10.5", "status": "planned" },
-        { "title": "Result card", "section": "14.2", "status": "planned" },
-        { "title": "Venue select", "section": "17", "status": "planned" },
-        { "title": "PixiJS renderer", "section": "18.1", "status": "planned" }
+        {
+          "title": "Architectural sheet look",
+          "section": "5.1",
+          "status": "planned"
+        },
+        {
+          "title": "Tilt-shift camera",
+          "section": "5.2",
+          "status": "planned"
+        },
+        {
+          "title": "Lanes",
+          "section": "5.3",
+          "status": "planned"
+        },
+        {
+          "title": "Race flow and results",
+          "section": "9",
+          "status": "in-progress",
+          "note": "On branch m0-prototype"
+        },
+        {
+          "title": "Commentary",
+          "section": "10",
+          "status": "in-progress",
+          "note": "Cave-voice lines on branch m0-prototype; needs the new voice"
+        },
+        {
+          "title": "Solo vs bots",
+          "section": "11.2",
+          "status": "in-progress",
+          "note": "On branch m0-prototype"
+        },
+        {
+          "title": "Visual design and microinteractions",
+          "section": "15",
+          "status": "planned"
+        },
+        {
+          "title": "Audio",
+          "section": "16",
+          "status": "in-progress",
+          "note": "Synthesised sounds exist"
+        }
       ]
     },
     {
-      "id": "M2", "title": "Rooms",
-      "exit": "Shoving feels fair at about 100 ms",
+      "id": "M2",
+      "title": "Rooms",
+      "exit": "3 devices finish a race and rematch 3 times",
       "features": [
-        { "title": "Rooms (2–6 players)", "section": "11.2", "status": "planned" },
-        { "title": "Lockstep netcode", "section": "12", "status": "planned" },
-        { "title": "Spirits in Ochre and Fog", "section": "11.2", "status": "planned" },
-        { "title": "Tug Day 2v2 online", "section": "11.6", "status": "planned" }
+        {
+          "title": "Rooms (2–4 players)",
+          "section": "11.1",
+          "status": "planned"
+        },
+        {
+          "title": "Shared seed multiplayer",
+          "section": "12",
+          "status": "planned"
+        }
       ]
     },
     {
-      "id": "M3", "title": "Competition",
-      "exit": "Day-2 retention; the cup runs reliably every day",
+      "id": "M3",
+      "title": "Share",
+      "exit": "A dare link replays the same race on another device",
       "features": [
-        { "title": "Checked score submission", "section": "13", "status": "planned" },
-        { "title": "Leaderboards and category boards", "section": "13", "status": "planned" },
-        { "title": "Ranked play", "section": "11.3", "status": "planned" },
-        { "title": "Daily Cup with betting", "section": "11.4", "status": "planned" },
-        { "title": "Graft", "section": "11.5", "status": "planned" }
+        {
+          "title": "Dare links",
+          "section": "11.3",
+          "status": "in-progress",
+          "note": "Encoding verified; link flow on branch m0-prototype"
+        },
+        {
+          "title": "Result card",
+          "section": "14",
+          "status": "planned"
+        },
+        {
+          "title": "Deploy",
+          "section": "18.2",
+          "status": "planned"
+        }
       ]
     },
     {
-      "id": "M4", "title": "Launch",
-      "exit": "Share rate, D1/D7 return, dare-link conversion",
-      "features": [
-        { "title": "Replay clip rendering", "section": "14.2", "status": "planned" },
-        { "title": "Share sheet", "section": "14.2", "status": "planned" },
-        { "title": "Share-page previews", "section": "14.3", "status": "planned" },
-        { "title": "PWA", "section": "20.3", "status": "planned" },
-        { "title": "Logo, icon, landing", "section": "15.1", "status": "planned" },
-        { "title": "Trailer and launch posts", "section": "14.4", "status": "planned" }
-      ]
-    },
-    {
-      "id": "Later", "title": "Later",
+      "id": "Later",
+      "title": "Later",
       "exit": "",
       "features": [
-        { "title": "Notebook venue", "section": "5.6", "status": "planned" },
-        { "title": "A new venue each month", "section": "5.6", "status": "planned" },
-        { "title": "Cosmetic extras", "section": "24", "status": "planned" }
-      ]
-    },
-    {
-      "id": "—", "title": "No milestone in the PRD",
-      "exit": "",
-      "features": [
-        { "title": "Reveal and wake-up", "section": "4.1", "status": "planned" },
-        { "title": "Microinteractions", "section": "15.2", "status": "planned" },
-        { "title": "Audio", "section": "16", "status": "planned" },
-        { "title": "Gallery and settings", "section": "17", "status": "planned" },
-        { "title": "Responsive layout and camera", "section": "20.2", "status": "planned" },
-        { "title": "Speed budgets", "section": "20.1", "status": "planned" },
-        { "title": "Accessibility", "section": "20.4", "status": "planned" },
-        { "title": "Moderation and safety", "section": "21", "status": "planned" },
-        { "title": "Analytics", "section": "22", "status": "planned" }
+        {
+          "title": "Leaderboards",
+          "section": "13",
+          "status": "planned"
+        },
+        {
+          "title": "More scenes",
+          "section": "26",
+          "status": "planned"
+        },
+        {
+          "title": "PWA",
+          "section": "20",
+          "status": "planned"
+        },
+        {
+          "title": "Moderation and safety",
+          "section": "21",
+          "status": "planned"
+        },
+        {
+          "title": "Analytics",
+          "section": "22",
+          "status": "planned"
+        }
       ]
     }
   ]

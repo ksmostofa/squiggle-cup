@@ -1,8 +1,8 @@
 # Squiggle Cup
 
-**Draw anything. It comes alive and races your friends. Badly.**
+**Draw anything. It comes alive and races your friends' drawings.**
 
-A multiplayer physics party game for 2–4 players. Everyone in a room draws a creature at the same time, then all of them wake up and race the same agility course. There are no hidden stats: the shape you draw *is* the physics. Long legs stride, round blobs roll, top-heavy towers fall over in the tunnel. Rematch, redraw a better shape and win.
+A multiplayer drawing race for 2–4 players. Everyone in a room draws a creature at the same time, watching it come alive in a live preview as they draw. Then every creature races itself, side by side in its own lane, across a clean white architectural sheet seen like a tilt-shift miniature. There are no controls and no hidden stats: the shape you draw decides how it moves. Two legs run, four legs trot, wings fly, round bodies roll, long ones slither. Rematch, or redraw a better shape and win.
 
 Built for the **trmi × Lovhack × Nexus Hackathon 2026**, theme *Multiplayer Everything*.
 
@@ -12,14 +12,15 @@ Built for the **trmi × Lovhack × Nexus Hackathon 2026**, theme *Multiplayer Ev
 
 ## How to play
 1. One player creates a room and shares the 4-letter code.
-2. Everyone draws a creature in 20 seconds with the same amount of ink.
-3. The creatures are revealed together and race: tap to stride, hold and release to leap.
-4. See the placings, everyone's award, and what the winner's shape did better. Rematch.
+2. Everyone draws a creature in 20 seconds. The preview shows how it will move while you draw.
+3. The creatures appear in their lanes and race themselves. No tapping: the drawing is the whole game.
+4. See the placings, each creature's kind and time, and what the winner's shape did better. Rematch or redraw.
 
 ## How it works
-- **Drawing → body.** Strokes are simplified and analysed (body, legs, symmetry, scribble) in `src/analyze.ts`, then built into a Rapier 2D physics body with motorised limbs in `src/creature.ts`.
-- **Rooms.** A small WebSocket relay (one room per code) forwards messages. The host's browser runs the simulation and streams snapshots at 20 Hz; guests send only their drawing and their taps. See PRD §28.4.
-- **Stack.** TypeScript, Vite, `@dimforge/rapier2d-deterministic-compat`, `perfect-freehand`, Canvas 2D, Cloudflare Workers + Durable Objects (relay) and Pages (hosting).
+- **Drawing → creature.** Strokes are labelled (body, legs, wings, tail, eyes) and the creature is classified into one of nine kinds in `src/analyze.ts`.
+- **Movement.** A small deterministic physics model in `src/body.ts` gives each kind a natural gait: planted-foot stepping for legs, wing lift by area, rolling, slithering. Kinds are balanced so none wins by default. See PRD §7–8.
+- **Rooms.** A small WebSocket relay (one room per code) forwards messages. Races have no inputs, so the host sends everyone the drawings and one seed; every device simulates the same race and the host's results are authoritative. See PRD §28.4.
+- **Stack.** TypeScript, Vite, `perfect-freehand`, Canvas 2D, Cloudflare Workers + Durable Objects (relay) and Pages (hosting).
 
 ## Run locally
 ```bash

@@ -2,11 +2,11 @@
 
 | | |
 |---|---|
-| **Status** | Final plan for prototype work. Supersedes all earlier drafts. |
+| **Status** | Updated Nov 1, 21:30 JST: one scene (the Sheet), self-running races in lanes, no tapping. Supersedes all earlier drafts. |
 | **Date** | 2026-11-01 |
 | **Working title** | Squiggle Cup. Check the name, a domain, the app stores and Steam before committing. |
-| **One-liner** | Draw anything. It comes alive and competes. Badly. |
-| **Core rule** | The shape of your drawing *is* its physics. No hidden stats. |
+| **One-liner** | Draw anything. It comes alive and races itself in its own lane. |
+| **Core rule** | The drawing is the whole game: its shape decides how it moves. No controls, no hidden stats. |
 | **Platform** | Web (installable PWA), portrait phone first, desktop supported |
 | **Cost target** | Free tiers only. The one optional expense is a domain, about $10 a year. |
 | **Primary growth channel** | X (Twitter), then Reddit, TikTok, itch.io and web game portals |
@@ -19,28 +19,28 @@
 2. Product vision and design rules
 3. Target players
 4. Game overview
-5. Venues
+5. The scene: the Sheet
 6. Drawing system
-7. Physics and creature model
-8. Controls and feel
+7. Creature movement
+8. Fairness and balance
 9. Race rules and results
-10. Comedy system
+10. Commentary
 11. Modes
 12. Multiplayer and netcode
-13. Leaderboards, ratings, fairness
-14. Virality and sharing (X-first)
+13. Leaderboards and fairness (after the hackathon)
+14. Virality and sharing
 15. Visual design and microinteractions
 16. Audio
 17. Screens and user flows
-18. Technical architecture (free stack)
-19. Data model and API
+18. Technical architecture
+19. Data model and API (after the hackathon)
 20. Performance, responsiveness, PWA, accessibility
 21. Moderation and safety
 22. Analytics and success metrics
 23. Testing plan
 24. Milestones
 25. Risks and mitigations
-26. Open questions and later experiments
+26. Open questions and later ideas
 27. Appendix: research data and sources
 28. Hackathon build (trmi × Lovhack × Nexus 2026)
 
@@ -112,718 +112,402 @@ The project began as "build Doodle Sports Day, but better", then widened into an
 
 **Rule that follows:** a post wins if it's **beautiful, impressive or funny**. It also needs (a) a one-line story a stranger could retell and (b) something personal to root for.
 
+### 1.5 What our own prototypes taught us (Nov 1)
+- **Tapping to run made it a reflex game, not a drawing game.** Leaping dominated speed, so the shape mattered less than the rhythm. The drawing is now the whole game.
+- **Physics engines alone don't look alive.** A Rapier ragdoll flopped and flipped; spring legs pogo-bounced. Natural motion needs controlled, physical gaits (section 7).
+- **Theme graphics can make doodles look worse.** A cartoon dog show and a rock-art cave both clashed with player drawings. A clean white sheet flatters any doodle.
+- **Fairness has to be designed.** Flyers ignored the terrain and won too often; every kind needs a real chance (section 8).
+
 ---
 
 ## 2. Product vision and design rules
 
-**Vision:** the funniest physics sport on the internet. Every player's scribble becomes an athlete, and every match produces a clip worth posting.
+**Vision:** the most satisfying "draw it and watch it live" race on the internet. Every player's doodle becomes a believable little animal that runs, hops, flies, rolls or slithers exactly the way its shape suggests, in its own lane, against friends' drawings.
 
 **Design rules** (they settle every disagreement):
-1. **The world has to make a bad drawing look intentional.** Every venue's art style flatters bad drawings.
-2. **The shape is the rules.** Everything that happens can be seen in the physics. Players learn by watching what happened.
-3. **The game plays it straight; the drawing is the joke.** Everything around the creature is formal and earnest. Only the creature is absurd.
-4. **Waiting time is drawing time.** The game loads in the background while you draw, so there's never a loading screen.
-5. **One deterministic simulation (same inputs, same result) runs everything:** multiplayer, score checking, ghosts, bots, replays and videos.
-6. **Fail fast, fail funny, rematch instantly.**
-7. **Every share is a dare, not a brag.** Shared links are playable in one tap.
+1. **The drawing is the whole game.** You draw; it races. No tapping, no controls, no player input after drawing.
+2. **The shape decides how it moves.** Legs, wings, body shape and size decide its kind and its gait. Nothing is hidden: players learn by watching.
+3. **Motion must look alive.** Natural, physical, readable movement is the product. If a creature's motion looks wrong (pogo-bouncing, sliding backwards, wings that don't flap), it is a bug.
+4. **Fair by design.** No creature kind wins by default. Kinds trade strengths against weaknesses; the better-drawn creature plus a little seeded luck wins.
+5. **What you see while drawing is what races.** The live preview uses the same simulation as the race and must never contradict it.
+6. **One deterministic simulation (same inputs, same result) runs everything:** previews, rooms, dare links and replays.
+7. **Clean, minimal, architectural.** White sheet, fine lines, lots of space. The doodle is the only loud thing on the page.
 8. **Everything is free, nothing is pay-to-win, and no AI art.**
 
 ---
 
 ## 3. Target players
-- **Casual X and TikTok scrollers** (primary): open a link from a post, play one race, share the result. Time to first race: under 30 s.
-- **Friend groups and streamers:** rooms, Tug Day, sabotage clips.
-- **Competitive players:** ranked rooms, seasons, venue records, category boards.
-- **Spectators and bettors:** the Daily Cup bracket with predictions.
-- **Age:** for everyone, with a safe-by-default silhouette mode for under-13s (section 21).
+- **Friend groups and streamers** (primary for the hackathon): a room of 2–4 people draws at the same time and watches the race together.
+- **Casual X and TikTok scrollers:** open a dare link, draw, race, share. Time to first race: under 30 s.
+- **Drawers and tinkerers:** players who enjoy working out which shapes run best and redrawing to win.
+- **Age:** for everyone, with a silhouette mode for under-13s (section 21).
 
 ---
 
 ## 4. Game overview
 
-### 4.1 Core loop (about 90 s)
-1. **Draw.** Your creature, in the venue's art style. 20 s in multiplayer, untimed solo. Everyone gets the same ink.
-2. **Reveal and wake-up.** All drawings are revealed at once. Each one blinks, stretches and comes alive. This is the emotional beat.
-3. **Race.** Tap to stride, hold and release to leap. Creatures shove, flip, get stuck and get nudged free.
-4. **Results.**
-   - placings and awards
-   - the judges' scorecards (Best in Show)
-   - your drawing next to the winner's, with one fact taken from the replay
-   - a slow-motion replay of the funniest fail
-5. **Rematch.** Keep your creature, or redraw in 10 s. One tap.
+### 4.1 Core loop (about 60 s)
+1. **Draw.** 20 s from your first stroke, everyone at once in a room. No ink limit. A live preview shows your creature moving as you draw it.
+2. **Reveal.** All drawings appear in their lanes and wake up together.
+3. **Race.** A short countdown, then every creature races itself down its own lane to the finish.
+4. **Results.** Placings, each creature's drawing, time and kind, one honest fact from the race ("The winner's legs were 1.8× longer").
+5. **Rematch** with the same drawings, or **redraw** a better shape. One tap.
 
 ### 4.2 Longer loops
-- **Session:** rematch, learn from the winner's shape, redraw.
-- **Daily:** enter the Daily Cup, bet pretend points on races, keep a streak, share the emoji strip.
-- **Long term:**
-  - ranked seasons
-  - venue records
-  - your personal gallery of every creature you've drawn, with each one's race history
-  - category boards
+- **Session:** watch why the winner won, redraw, rematch.
+- **Sharing:** a dare link replays the exact race and lets a friend draw a challenger.
+- **Later (after the hackathon):** a gallery of your creatures, daily races, leaderboards (section 13).
 
 ---
 
-## 5. Venues
-One engine and one creature system. A venue adds a course, its rules, a visual style, an ink style and a commentary voice.
+## 5. The scene: the Sheet
 
-Shared course rules:
-- Horizontal side view; creatures race left to right.
-- Races last 40–70 s.
-- A creature stuck for 5 s gets nudged forward by the handler (section 9).
+One scene for now: a clean white architectural drawing sheet, seen with a tilt-shift (miniature) camera.
 
-Course numbers below are the **starting values for tuning**.
+### 5.1 Look
+- **Paper:** bright white, a very faint drafting grid, a thin border and a small title block (game name, room code, race number, date), like an architect's presentation board.
+- **Linework:** very fine, precise lines in greys. Dimension lines with tick marks show distances along the course (0 m … finish). The start and finish are lettered in a clean technical style.
+- **Accent:** one accent colour, used only for your own lane and key UI.
+- **Space:** generous white space; nothing cluttered. It should look like a beautiful architectural board, not a game UI.
 
-### 5.1 Best in Show (flagship; first to build)
-- **Premise:** the world's most prestigious pet agility championship, and your entry is whatever you drew.
-- **Course (92 m):**
-  - hurdles at 11, 18, 70, 77 and 84 m (0.38–0.60 m high)
-  - a seesaw at 27 m (5.5 m plank on a pivot)
-  - a fabric tunnel at 39–45 m (ceiling 1.55 m, so tall creatures bonk)
-  - 6 springy weave poles from 54 m (1.2 m tall, spaced 1.3 m, springing back upright)
-  - finish at 92 m
-- **The handler:** a tiny human in a blazer, on a leash attached by a rope physics joint. They get dragged, trip, and keep their dignity. Rendered as a sprite plus the rope. Added in M1; M0 can leave them out.
-- **Judges:** three judges hold up scorecards after the race (section 10.5).
-- **Look:**
-  - green carpet, velvet ropes, gold rosettes, serif lettering in the style of a TV broadcast
-  - strong contrast, so it survives video compression
-  - ink is marker with a white sticker edge
-  - inks: `#1d1b2e`, `#c8372d`, `#2a6fdb`, `#2f9e5a`
-  - drawing pad: cream `#f4f1e6`
-- **Voice:** a hushed, reverent announcer. *"Remarkable. It has gone into the tunnel and has not come out."*
+### 5.2 Tilt-shift camera
+- The race is viewed like a photo of a miniature model lying on a desk: the sheet is seen at a slight angle, so lanes recede a little in perspective.
+- A sharp focus band runs along the lanes; above and below it the image blurs softly. Contrast and saturation are lifted slightly so it reads as a tiny diorama.
+- Creatures cast small, soft contact shadows, as if standing on the paper.
+- Your own creature and lane always stay sharp. Respect `prefers-reduced-motion`, and use a cheaper blur on low-end devices.
 
-### 5.2 STOMP
-- **Premise:** drawn monsters race to the tower through a toy city.
-- **Course (95 m):**
-  - "buildings" are stacks of dynamic blocks, 0.42 m each, 2–4 columns × 3–8 rows, very light (density 0.22), so creatures plough through
-  - parked toy cars (0.9 × 0.36 m) appear about 25% of the time between buildings
-  - finish at the tower
-- **Stat:** buildings flattened. A block counts as smashed when it moves more than 0.35 m or tilts more than 0.4 rad; it's credited to the nearest creature.
-- **Look:** a bright pastel tilt-shift diorama with tiny trees. Tiny people run away cartoonishly; no violence beyond that. Ink is crayon.
-  - inks: `#2b2233`, `#e0482f`, `#3c8f3e`, `#7b4fd6`
-  - drawing pad: `#fff8ec`
-  - building colours: `#f6b2a6`, `#9fd3e8`, `#f7d774`, `#b9e0a5`, `#d6c1f0`, `#f3c58d`
-- **Voice:** a breaking-news anchor. *"Authorities confirm the creature has no plan."*
+### 5.3 Lanes
+- Every participant has their own lane, drawn as fine drafting lines across the sheet. Lanes are numbered.
+- Creatures race left to right, side by side, and never collide or overlap.
+- All lanes stay visible at once; the camera pans horizontally to follow the pack.
+- **Course:** a straight, flat lane of 60 m (starting value for tuning). No hazards, obstacles, hills, chasing darkness or page turns.
 
-### 5.3 Ochre
-- **Premise:** paintings on a cave wall come alive at night. Race the dark to the cave mouth; fall behind and you turn back into a painting.
-- **Course (100 m):**
-  - rolling rock ground made of three layered sine waves, up to about ±1 m
-  - stalagmites (fixed triangles, 0.45–0.95 m high)
-  - loose scree (dynamic pebbles, radius 0.1–0.2 m)
-- **The dark:** starts at −9 m and moves at 1.55 m/s, speeding up by 0.03 m/s every second. A creature it catches is eliminated: it freezes and fades back into a painting.
-- **Finish:** at the cave mouth the whole screen floods with daylight. That reveal ends every race.
-- **Look:**
-  - a flickering torch lights the rock
-  - ink is pigment with dry-brush grain, so a crude drawing reads as 30,000 years old
-  - inks: red ochre `#b5452b`, yellow ochre `#d9a441`, charcoal `#1d1a19`, kaolin white `#efe6d8`
-  - rock `#2b231f` to `#5a4a3f`, fire glow `#ffb347`, daylight sky `#bfe3ff`
-- **Video risk:** dark scenes look muddy when compressed. Share clips must end on the bright daylight frame and use it as the thumbnail.
-- **Voice:** a nature-documentary narrator (a generic one, never imitating a real person). *"Here we observe the rare one-legged Geraldus, which has evolved, for reasons unknown, a hat."*
-
-### 5.4 Fog
-- **Premise:** you draw with your finger on a misty window. Race across the glass before the fog forms again behind you.
-- **Course (90 m):**
-  - a flat window sill
-  - condensation puddles every 9–15 m (2–4 m wide, almost no friction, so creatures slide)
-  - occasional falling drips that knock creatures over
-- **The fog:** starts at −9 m and moves at 1.6 m/s, speeding up by 0.028 m/s every second. A creature it catches is eliminated: it fades into the mist.
-- **Look:**
-  - lo-fi rain at night, glowing city lights behind the glass, droplets
-  - ink is a clear streak wiped through the mist; one ink colour (white)
-  - the prettiest venue in the game, and the calm one
-  - drawing pad: `#9fb1c2`
-- **Voice:** soft lo-fi radio. *"…and that was the fog. Stay cosy."*
-
-### 5.5 Tug Day
-- **Premise:** a summer-fair tug of war. Two teams, one rope, zero dignity.
-- **Format:**
-  - 2v2. A solo player gets a bot teammate.
-  - The left team faces left (its drawings are mirrored); the right team faces right.
-  - Each creature is tied by a rope joint to a central knot (a ball, radius 0.22 m).
-  - A team wins when the knot crosses 6 m onto its side, or by knot position after 45 s.
-- **Shape matters:** many short legs grip; long legs slip; more ink means more weight.
-- **Team bonus:** when teammates tap in sync, both get a pulling bonus.
-- **Look:** sunny grass, chalk ink, bunting, a mud stripe at the centre. Inks: `#25324a`, `#d2462f`, `#2c7be5`, `#e8a317`.
-- **Voice:** an over-excited village fete announcer.
-- **Rankings:** casual only; not part of ranked play.
-
-### 5.6 Later venues
-- **Notebook** ("Last Page" rules): margin doodles; the page turns as a timer; losers draw hazards onto the next page.
-- **A new venue each month**, with a palette change.
+### 5.4 Creatures on the sheet
+- Each creature looks exactly like what its player drew: the same strokes, in clean pen ink. No stickers, no googly eyes, nothing added.
+- Ink colours must contrast strongly against white.
 
 ---
 
 ## 6. Drawing system
 
 ### 6.1 The drawing pad
-- **Size:** 600×600 logical pixels, scaled to fit the screen. **1 pad pixel = 0.005 m**, so the pad is 3 m across.
-- **Guide:** a "Face this way →" arrow (the race direction), with a faint venue-themed background.
-- **Pens:** the venue's 1–4 ink colours × 2 widths (thin 7 px, thick 14 px). Strokes are smoothed with perfect-freehand.
-- **Ink budget:** about 3,000 px of stroke length per creature. Thick strokes cost 1.4× as much.
-  - The meter drains as you draw; when it's empty you can't draw more.
-  - Everyone gets the same budget in every mode.
-- **Tools:** Undo, Clear, Done. An optional name field; if left empty, a formal name is generated.
-- **Timer:** 20 s in multiplayer, with a visible countdown that auto-submits. Untimed solo.
+- **Size:** 600×600 logical pixels, scaled to fit the screen. The pad is the same white sheet (faint grid, fine border) as the race.
+- **Guide:** a small "runs this way →" arrow.
+- **Pens:** 3–4 ink colours × 2 widths. Strokes are smoothed with perfect-freehand for the look only; the simulation uses the simplified points.
+- **No ink limit.**
+- **Timer:** 20 s, starting at your first stroke, shown as a thin countdown bar. At zero the drawing submits itself; if it has no body yet, it submits as soon as one is drawn.
+- **Tools:** Undo, Clear, Done, and an optional name. If the name is left empty, one is generated.
 
-### 6.2 Live feedback while drawing (teaches the rules without text)
-- **Body:** when you close an outline, it fills with a soft wash of colour.
-- **Limbs:** a stroke attached to the body gets a pulsing knuckle dot where it joins.
-- **Eyes:** dots and small loops inside the body turn into googly eyes immediately and blink.
-- **Status chip:** e.g. "Body ✓ · 4 legs · 2 eyes".
+### 6.2 Live preview
+- A strip under the pad shows the creature moving in its lane **exactly as it will race**, using the same simulation code and settings.
+- It updates the moment each stroke ends, so adding two legs makes it walk and adding wings makes it fly.
+- A line of plain text names the detected kind and gait, e.g. "Four-legged — trots".
 
 ### 6.3 Reading the drawing (rules in pad pixels)
-1. **Closed stroke:** at least 4 points, length over 60 px, and the gap between its ends at most max(26 px, 18% of its length).
-2. **Body:** the closed stroke with the largest area whose bounding box is at least 54 px. If none, the longest stroke. Nothing usable means no valid creature: "Draw a body!"
-3. **Eyes:** strokes smaller than 54 px whose centre is inside the body and that are either dots (under 16 px long) or closed loops. Eye radius = max(9 px, half its size + 4 px).
-4. **Limbs:** a stroke at least 28 px long, with an end within **20 px** of the body (or inside it), that reaches at least 18 px away from the body. Its points are reordered so the attached end comes first.
-5. **Decoration:** everything else. Rendered with the body, no collision.
+All thresholds are fractions of the drawing's own size (M = the larger side of its bounding box), so small and large drawings read the same.
+1. **Closed stroke:** at least 4 points, length ≥ 50 px, and the gap between its ends ≤ max(24 px, 16% of its length).
+2. **Body:** among closed strokes with length ≥ 0.25 M, the one with the largest area × (0.4 + roundness), where roundness = 4πA/P². If there is none, the longest stroke.
+3. **Eyes:** small dots and loops inside the body.
+4. **Legs:** open strokes with "feet": low points in the bottom 30% of the drawing, below the body, standing out from their neighbours. A zigzag is several legs.
+5. **Wings:** must be recognised reliably. Strokes rooted near the upper body that reach upward or outward, drawn as lines, loops, arcs or zigzags, count as wings. (The current rule, which needs wings to stick out sideways, misses many drawn birds; build a test set of hand-style wing variants.)
+6. **Tails and fins:** sideways strokes at body height.
+7. **Decoration:** everything else; it moves with the body.
 
-### 6.4 Compact encoding (for dare links, ghosts, replays and storage)
-- Simplify each stroke (RDP, 2 px), then round to a 3 px grid (coordinates 0–200 fit in one byte).
-- **Bytes, in order:**
-  1. version
-  2. venue
-  3. seed (4 bytes)
-  4. name length, then the name in UTF-8 (at most 36 bytes)
-  5. stroke count
-  6. for each stroke:
-     - a flags byte: ink index (3 bits), width (1 bit)
-     - point count (at most 255)
-     - first x and y
-     - offsets to each following point (int8 pairs; extra points are added when a jump exceeds ±127)
-- **Inputs** (when included): event count, then each event's tick offset from the previous one (variable-length integer) with its type (tap, press, release) in the low bits.
-- **Format:** base64url in the URL after `#`. Target ≤ 2 KB, including a 60 s ghost run.
+### 6.4 Kinds
+Picked in this order (first match wins), then tuned by playtests:
 
----
+| Kind | When | Gait |
+|---|---|---|
+| Scribble | many self-crossings and dense ink | erratic |
+| Flyer | wings with 0–1 legs, or 2+ wings with ≤ 4 legs | flaps |
+| Many-legged | 5+ legs | ripples |
+| Four-legged | 3–4 legs | trots |
+| Two-legged | 2 legs | runs, legs alternating |
+| One-legged | 1 leg | hops |
+| Roller | round closed body, no legs | rolls |
+| Snake | long body (width ≥ 1.9 × height), no legs | slithers |
+| Jelly | anything else | wobbles and oozes |
 
-## 7. Physics and creature model
-
-**Engine:** Rapier 2D deterministic build (`@dimforge/rapier2d-deterministic-compat` 0.21.0).
-- **Units:** metres, y up, gravity −9.81.
-- **Step rate:** fixed 60 steps per second. Everything random is seeded.
-
-### 7.1 Building a creature
-- **Body:** one dynamic rigid body.
-  - A closed body becomes a convex-hull collider of its simplified outline (concave shapes are filled in).
-  - An open body becomes capsules along the line (radius = half the stroke width, at least 0.04 m).
-  - Density 1, friction 0.7, restitution 0.05, angular damping 0.6.
-- **Limbs:** each limb is its own dynamic rigid body, made of capsules along the simplified stroke.
-  - Radius ≥ 0.035 m, density 1.2, **friction 1.6** (grip).
-  - A **revolute joint** (hinge) connects it to the body at the attach point.
-- **Facing:** mirrored horizontally for left-facing teams in Tug Day.
-- **Spawn:** placed so the lowest point sits 0.08 m above the ground.
-- **No self-collision:** each creature has its own collision bit, so its parts never hit each other. They still hit the world and other creatures, up to 15 creatures in one world.
-- **Weight:** comes from the colliders (more ink = heavier).
-
-### 7.2 How it moves (spoke model, like Draw Climber)
-- **Throttle:** each tap adds +1, up to 5. It fades by a factor of e^(−1.7·t).
-- **Limb motors:** velocity-driven, with target = −facing × throttle × **3.4 rad/s**. Limbs turn like spokes, so long legs give big fast strides and many short legs give a steady crawl.
-- **Motor gain:** 2 + 10·min(throttle, 1). With no throttle the limbs go slightly floppy, which is funny.
-- **Motor torque limit:** 30 × the creature's total mass. Force-based, so heavy limbs really are harder to turn.
-- **Natural rhythm:** each creature has one. Over-spinning flips it; under-spinning stalls it.
-
-### 7.3 Leap
-- **Hold:** at least 0.2 s. Charge c = min(1, (held − 0.2)/0.7).
-- **On release (only when grounded and off cooldown):**
-  - body impulse = mass × (1.2 + 2.2c) forward and mass × (3 + 4.5c) upward
-  - each limb gets the matching upward impulse
-- **Cooldown:** 0.9 s.
-- **Grounded check:** a ray cast straight down from the body for (creature height + 0.35 m), ignoring the creature's own parts.
-
-### 7.4 Staying upright
-- **Each step**, apply a torque toward upright: (−k·angle − 1.6·angular velocity) × mass × dt × 0.6.
-  - k = 7 normally: weak, so flips still happen.
-  - k = 30 after 1.4 s upside down: the creature rights itself, which is also a comedy beat.
-- **Flips:** counted when the angle passes ±2.6 rad and changes sign.
-
-### 7.5 Anti-exploit rules
-- **Progress:** in ranked play, distance only counts while touching the ground. Airborne launches still move the creature, but the leap is capped and on cooldown, so flinging gains little.
-- **Physical limits:** motor torque is capped relative to weight (above) and the same ink budget applies to everyone.
-- **Minimum body size in ranked:** a body bounding box of at least 80 px, so "dust speck" creatures aren't allowed.
-- **Speed sanity check:** the server-side re-run rejects any creature averaging more than 9 m/s.
-- **Fuzz testing:** 1,000 randomly generated creatures must stay inside the speed limit and never get stuck forever (section 23).
-
-### 7.6 Render-only effects (not simulated; replays stay deterministic)
-- **Googly pupils:** springs pushed by the body's acceleration and gravity, kept inside 45% of the eye radius.
-- **Decoration jiggle:** a slight lagging rotation driven by the body's spin.
-- **Squash and stretch** on landing.
+### 6.5 Compact encoding (dare links)
+- Snap each stroke to a 3 px grid (coordinates 0–200 fit in one byte), simplify (RDP), and store byte offsets between points.
+- **Bytes:** version, venue, seed (4 bytes), name (≤ 36 bytes UTF-8), stroke count, then per stroke: flags (ink, width), point count, first point, offsets.
+- No inputs are stored: races run themselves, so drawings plus the seed replay a race exactly.
+- **Format:** base64url after `#d=`. Re-encoding a decoded creature gives the same bytes.
 
 ---
 
-## 8. Controls and feel
-| Input | Mobile | Desktop | Action |
-|---|---|---|---|
-| Stride | Tap anywhere in the lower 60% of the screen | Space | +1 throttle; sound and visual feedback right away |
-| Leap | Hold, then release | Hold Space, then release | Charges while held; leaps on release |
-| Drawing | One finger | Mouse or pen | Pen pressure changes only the look of the stroke, never physics |
+## 7. Creature movement
 
-- **Instant feedback:** every press triggers sound, a ring pulse and a slight creature squash immediately, even when netcode applies the input a few steps later (section 12).
-- **Rhythm ring:** a faint ring around your creature pulses at its ideal tapping speed. That tempo is estimated from limb length: longer limbs pulse slower.
-- **Tap sounds:** taps in time with the ring play a soft drum hit; off-beat taps play a dull thud.
-- **Tutorial:** no text tutorial. The first race shows a ghost hand tapping, and a prompt appears if the player hasn't tapped within 3 s.
+### 7.1 Principles
+- One rigid body per creature with real mass (from its painted area and ink), inertia, gravity and momentum.
+- Every drawn part moves with the simulation: a drawn leg is shown where the simulated leg is, and wings beat with the flap.
+- Motion must be natural and readable. Earlier attempts and what they taught us:
+  - a Rapier ragdoll with motorised limbs flopped and flipped;
+  - spring-mass legs pogo-bounced;
+  - the current approach (critically damped ride height, planted-foot stepping) is the best so far but still needs work (section 7.3).
+
+### 7.2 Gaits by kind
+| Kind | How it moves |
+|---|---|
+| Two-legged | Body held at a steady ride height by damped "muscles". Feet stay planted until the body passes them, then step forward in a smooth arc; legs alternate |
+| Four-legged | Same, with legs stepping in alternating pairs (a trot) |
+| Many-legged | Same, with a ripple running along the legs |
+| One-legged | Kangaroo hops: crouch, launch, soft landing |
+| Flyer | Wing lift proportional to wing area holds a cruising height with gentle damping; wings visibly flap; the body bobs softly with each beat. A heavy body with small wings flutters lower |
+| Roller | A rigid round body spun by torque; it rolls without sliding |
+| Snake | Slides forward on belly scales (slip forwards, grip backwards) with a smooth travelling wave along the body |
+| Jelly | Oozes forward with a squash-and-stretch wobble |
+| Scribble | Uses whatever parts it has, with an erratic, seeded pace |
+
+### 7.3 Known motion bugs to fix
+- The snake sometimes jumps and slides backwards; it must slither forward smoothly.
+- Wings are not always detected, so some flyers don't fly or flap (section 6.3).
+- Motion must be judged by watching it, not only by tests.
+
+### 7.4 Determinism
+- Fixed 60 ticks per second, with substeps as needed.
+- Only + − × ÷ and sqrt in the simulation. Trig is polynomial (`src/dmath.ts`); randomness comes from a seeded mulberry32 (`src/rng.ts`). Never `Math.random` in the simulation.
+- The same drawings and seed must give the same race on every browser and device.
+
+### 7.5 Render-only effects
+- Soft contact shadows, small dust puffs on landings, ink "drying" on new strokes. None of these affect the simulation.
+
+---
+
+## 8. Fairness and balance
+- **No kind may dominate. Flyers must not always win.**
+- Each kind has a different profile that trades off against the others, e.g. quick acceleration vs high top speed, steady vs streaky pace.
+- On the flat lane, expected finish times for a well-drawn creature of each kind fall in a narrow band. Proportions (leg length, size, symmetry) matter within a kind; a little seeded luck decides close races.
+- **Balance test:** thousands of headless mixed races with generated creatures of every kind. No kind may win more than about 1.5× its fair share, and every kind must win sometimes. Report the win rate per kind.
+- Speeds scale like real animals: by √(g × leg length), so longer legs run faster within a kind.
 
 ---
 
 ## 9. Race rules and results
 
 ### 9.1 Race flow
-1. **Countdown:** "Ready… Set… Squiggle!" (3 s). Inputs are ignored until it ends.
-2. **Finish:** a creature finishes when its body crosses the finish line; its time is recorded to the tick.
-3. **Elimination** (Ochre and Fog): a creature whose body is behind the chasing dark or fog is eliminated. It freezes and fades.
-4. **Handler nudge:** if a creature moves less than 0.6 m in 5 s, it's moved forward 2.2 m and up 1.2 m, with its velocity reset. This counts as a "nudge" stat and comes with commentary ("The handler has intervened. This is permitted."). In ranked play each nudge adds a 1.5 s time penalty.
-5. **Race end:** when everyone has finished or been eliminated, or 6 s after the player is done (the rest of the race runs at 3× speed), or after 120 s.
-6. **Ranking order:**
-   1. finishers, by time
-   2. creatures still running, by distance
-   3. eliminated creatures, with later elimination ranked higher
+1. **Reveal and countdown** (about 3 s). Creatures appear in their lanes and wake up.
+2. **Race.** Each creature runs itself down its lane. Finishing is when its body crosses the finish line; time is recorded to the tick.
+3. **End:** when everyone has finished, or 5 s after the last player in the room finishes, or after 120 s.
+4. **Ranking:** finishers by time, then everyone else by distance.
 
 ### 9.2 Results screen
-- **Podium** with rosettes (1st, 2nd, 3rd).
-- **Your creature beside the winner's**, plus one fact taken from the replay. Template examples:
-  - "Winner's legs: 2.1× longer."
-  - "You tapped 4.2/s; your ideal was 3.1/s."
-  - "You flipped 6 times."
-- **Funniest-fail replay:** in slow motion (section 10.4).
-- **Awards:** every creature in the race gets at least one (section 10.3).
-- **Judges' scorecards** (Best in Show only).
-- **Buttons:** Rematch (keep the creature), Redraw (10 s), Change venue, Share (card or clip), Dare link (copy).
+- Placings with each creature's drawing, name, kind and time.
+- One honest fact from the race, comparing you with the winner (kind, leg length, size or top speed).
+- One light award per creature (Fastest Stride, Most Airborne, Steadiest Gait…).
+- Buttons: **Rematch** (same drawings, new seed), **Redraw**, **Share / dare link**.
+- If the gap between first and second is under 0.3 s: a photo-finish moment.
 
 ---
 
-## 10. Comedy system
-
-**Principle:** the game is the straight man and the creature is the joke. Comedy comes from the gap between what you expected and what happened, from seriousness against nonsense, from visible loss of control, from the underdog winning, and from timing.
-
-### 10.1 Always-on features
-- **Googly eyes:** see section 7.6.
-- **Jiggle:** see section 7.6.
-- **Formal names** (when the player doesn't type one). A title, a shape-based core and a suffix:
-  - titles: Sir, Dame, The Honourable, Lord, Lady, Professor, Captain
-  - core from the shape: Fourlegs, Nolegs, Longshanks, Blob, Wobblington…
-  - suffixes: III, Esq., of Croydon, the Unbothered, Jr.
-  - examples: *Sir Reginald Fourlegs III*, *The Honourable Blob*
-- **Underdog swings:** bounded random events (a gust of wind, a banana peel) give weak drawings a small but real chance to win. Rare and seeded; never in ranked play.
-
-### 10.2 Deadpan commentary
-- **Format:** a ticker of template lines in each venue's voice, triggered by race events. At most one line every 2.5 s, with priority order: photo finish > elimination > nudge > flip > airtime > lead change.
-- **Triggers:**
-  - start
-  - flip
-  - more than 1 s in the air
-  - a nudge
-  - a lead change (only after 3 s, at most every 4 s)
-  - an elimination
-  - every 10 blocks smashed (STOMP)
-  - finish
-  - photo finish (gap under 0.3 s)
-  - a Tug Day win
-- **Example lines (Best in Show):**
-  - "A bold strategy: zero legs."
-  - "{name} has lost contact with the ground. {name} remains confident."
-  - "The judges are writing something down."
-- **Clips:** every line is burned into the shared clip as a caption, because X plays video muted.
-
-### 10.3 Awards (each creature gets the best one that applies)
-- **Most Confident Loser:** last place with the most taps.
-- **Fastest While Upside Down:** highest speed while inverted.
-- **Technically Finished:** the slowest finisher.
-- **Frequent Flyer:** the most time in the air.
-- **Gymnast:** the most flips.
-- **Wrecking Ball:** the most buildings smashed (STOMP).
-- **Last Light:** the last creature caught (Ochre and Fog).
-- **Handler's Favourite:** the most nudges.
-- **Unbothered:** the fewest taps in the field.
-
-### 10.4 Fail detector
-- **Scoring:** the replay is scored for moments of longest airtime, fastest spin, getting trampled (a heavy contact from above), a big lead lost in the last 10 m, and flips.
-- **Highlight:** the top moment is played at 0.35× speed with a zoom-in, a caption and a sound sting.
-- **Reuse:** the same moment becomes the default share clip (section 14).
-
-### 10.5 Judges' scorecards (Best in Show)
-- **Three judges** hold up one card each:
-  - **Grace:** 10 − flips × 1.5, minimum 0.5, one decimal.
-  - **Legs:** "Yes", "No", "Too many" or "Unclear", based on the limb count.
-  - **Spirit:** taps per second × 2 plus a seeded random offset, capped at 10.
-- **Rosette text:** e.g. *"Gerald — Reserve Champion, Most Legs."*
+## 10. Commentary
+- **Format:** a short ticker of template lines in a calm, dry, architectural-documentary voice, at most one line every 2.5 s.
+- **Triggers:** start, lead change (after 3 s, at most every 4 s), a long time in the air, a fall, the winner finishing, your own creature finishing, photo finish.
+- **Example lines:** "Specimen 3 adopts a four-legged gait." · "Lane 2 takes the lead." · "The flyer has elected not to land." · "Too close to call."
+- **Names:** generated when the player leaves the name empty, e.g. "Gerald Fourfoot".
 
 ---
 
 ## 11. Modes
 
-### 11.1 Quick Race (M0–M1)
-- **Format:** solo against 3–5 bots in any venue. No account needed.
-- **Bots (ghosts):**
-  - Real players' drawings plus their recorded inputs when available, labelled with a ghost icon.
-  - Before there's data: generated creatures (a lumpy closed body, 0–6 legs, dot eyes, an optional tail) driven by a bot pilot.
-  - Bot pilot: taps at 2.4–4.4 per second with jitter, and leaps when an obstacle is 1.6 m ahead (with a per-bot success chance).
+### 11.1 Rooms (hackathon priority)
+- 2–4 players join by link or 4-letter code. The host starts the game. Bots fill empty lanes if the host turns them on.
+- Everyone draws at the same time, races together, sees the same results, and can rematch.
 
-### 11.2 Rooms (M2)
-- **Format:** 2–6 players, joined by link or 4-letter code. The host chooses the venue and rules (draw timer, number of rounds, bots on/off).
-- **Elimination-venue twist:** in Ochre and Fog, eliminated players become **spirits** who can draw one rockfall or drip stroke ahead of the leaders. Nobody gets bored after going out.
+### 11.2 Solo
+- One player against 3 bot creatures of different kinds. No account needed.
+- **Bot creatures:** generated drawings of every kind (body, legs, wings, tail, eyes) drawn with a slightly wobbly hand, read by the same drawing reader as players' drawings.
 
-### 11.3 Ranked (M3)
-- **Matchmaking:** a regional matchmaker builds 6-player races in Best in Show, STOMP, Ochre and Fog. It waits at most 8 s, then fills seats with ghost bots of similar skill (labelled).
-- **Skill rating:** OpenSkill with placement-based updates; resets each month (season).
-- **Rules:** ground-contact progress only, nudge penalties, no underdog swing events, a minimum body size.
+### 11.3 Dare links
+- The link carries the challenger's drawing and the race seed. The receiver draws a creature and races it against theirs in the same race.
 
-### 11.4 Daily Cup (M3)
-- **Entry:** one creature per player per day (00:00–23:59 UTC).
-- **Venue:** rotates daily. Best in Show days are titled "Best in Show of the Day".
-- **Bracket:**
-  - 64 entries, chosen from the pool by recent activity and a seeded random draw, with the player's own entry always tracked.
-  - Heats of 4, top 2 advance: 16 heats → 8 → 4 → 2 → a final of 4.
-- **Fairness:** every entrant is driven by the same **house jockey** bot at its creature's ideal rhythm. It's a contest of drawings, like Horse Race Tests.
-- **When it runs:** deterministically by a scheduled job. Results are stored as seeds and the bracket; clients replay the races locally.
-- **Watching and betting:**
-  - Featured heats play on a schedule.
-  - A **10-second prediction window** opens before each one. Bets use pretend points only, with no real money ever.
-  - A streak counts correct picks.
-- **Daily share:** an emoji strip, e.g. `Squiggle Cup Day 41 🐾🐾🌑🏆 #12`.
-
-### 11.5 Graft (M3+, a mode that lives in X threads)
-- **How it works:** a post contains a creature link. Each reply link adds **exactly one stroke** to it (length-capped), runs a test race, and produces a new link to post as a reply.
-- **Branches:** each branch is a family line. The best-scoring version shows in a "Graft tree" view.
-- **Server:** none needed. The whole stroke history lives in the link.
-
-### 11.6 Tug Day (M1 against bots, M2 in rooms)
-See section 5.5.
+### 11.4 Later
+- Daily race, ranked play, leaderboards, gallery (section 13).
 
 ---
 
 ## 12. Multiplayer and netcode
-- **Model:** deterministic lockstep at 60 ticks per second.
-  - Drawings are sent **once** when the race starts (a few hundred bytes each).
-  - After that, only inputs travel: `{tick, playerSlot, type: tap|press|release}`.
-- **Input delay:** 3 ticks (50 ms) by default, adjusting between 2 and 6 based on measured round-trip time.
-- **Hiding the delay:** local feedback (sound, ring, squash) fires on the press itself.
-- **Rollback (later):** if playtests say shoving feels laggy at about 100 ms, switch to rollback, where each machine predicts and then corrects. Rapier can save and restore whole physics states (`world.takeSnapshot()` / `restoreSnapshot`), and a world with 6 small creatures is cheap to restore.
-- **Server role:** one Cloudflare **Durable Object per room**. It:
-  - relays inputs and assigns slots
-  - keeps the official input record
-  - re-runs the race at the end to confirm the result
-  - uses the WebSocket mode that doesn't bill idle connections
-- **Messages:** `join`, `hello{slot}`, `drawing{bytes}`, `ready`, `start{seed, startTick, venue}`, `input{tick,type}`, `inputs{tick, [..]}` (sent by the server each tick), `end{results}`, `rematch`.
-- **Disconnects:** a dropped player's creature continues as a ghost bot driven by the house jockey. They can reconnect within the race.
-- **Desync detection:** every 60 ticks, clients send a hash of all body positions. If they differ, the room is flagged and the server's version wins. This should never happen with the deterministic build.
+- **No inputs during a race**, so there is no input netcode. A race is fully decided by the drawings and one seed.
+- **Flow:**
+  1. Players join a room; a relay assigns lanes.
+  2. During the draw phase each player sends their drawing once (simplified points, a few hundred bytes).
+  3. The host sends `start{seed, drawings, startsAt}` to everyone.
+  4. Every client runs the identical simulation locally and shows the race.
+  5. The host's results are authoritative: the host sends `results{ranking, times}` and every client shows those, so a rare floating-point difference on one device can never change who won.
+- **Server role:** a tiny WebSocket relay, one room per code. It only forwards messages and assigns lanes.
+- **Messages:** `join{name}`, `hello{lane, players}`, `lobby{players}`, `phase{draw|race|results, endsAt}`, `drawing{points}`, `start{seed, drawings}`, `results{ranking, times}`, `rematch`.
+- **Disconnects:** a player who drops keeps their creature in the race (it runs itself anyway). If the host leaves, the room ends with a "host left" screen.
 
 ---
 
-## 13. Leaderboards, ratings, fairness
-- **Checked scores:** a submitted run = drawing bytes + venue + seed + input events + claimed time.
-  - A Worker re-runs it headlessly with the same Rapier WASM build and accepts it only if the time matches to the tick.
-  - Confirm the CPU time against Workers limits during M3.
-- **Boards:**
-  - **Per venue, all time:** best verified time, one entry per player.
-  - **Daily:** per venue, resetting at 00:00 UTC.
-  - **Category boards (daily):** fastest one-legged, fastest legless, most buildings flattened, longest airtime, most flips while still finishing. Lots of players get to be #1 at something.
-  - **Season rating** (ranked).
-  - **Daily Cup:** champion, plus a prediction streak board.
-- **Equal conditions:** same ink, same timer, same seed per race, drawings revealed at the same time.
-- **Replays:** any leaderboard entry can be watched or raced as a ghost.
+## 13. Leaderboards and fairness (after the hackathon)
+- Verified scores: a submitted race (drawings + seed) is re-run headlessly and accepted only if the result matches.
+- Boards: fastest time per kind, daily races, best creature of the day.
+- Equal conditions: same timer and same seed for everyone in a race.
 
 ---
 
-## 14. Virality and sharing (X-first)
-
-### 14.1 Principles
-1. **Every share is a dare:** a "Beat {name} →" link that opens in **X's built-in browser** and plays in one tap. No sign-up, no install, no pop-ups. Playable in under 3 s.
-2. **Post native media and put the link in the first reply.** X shows the attached media instead of a link preview, and posts with outside links are widely reported to get less reach.
-3. **Clips work muted:** the first frame explains itself, colours are bold, and text is big and burned in.
-4. **Bad drawings are the stars:** present them beautifully; never "fix" them.
-5. **No AI-generated art** anywhere in the product or the marketing.
-
-### 14.2 What players can share (all made on their device; no server cost)
-- **Result card:**
-  - 1200×630 (link previews) and 1080×1350 (Instagram)
-  - the creature drawn large in the venue's style, rosette, placing, time, venue, award, name
-  - a handprint watermark and a short URL
-- **Replay clip:** 9:16, 6–12 s, rendered **from the deterministic replay** (not a screen recording).
-  - Contents: the funniest-fail moment, the photo finish and the closing reveal (rosette, daylight, collapse).
-  - Smooth camera moves, burned-in captions, made with WebCodecs plus Mediabunny.
-  - Falls back to MediaRecorder where WebCodecs isn't available.
-- **Daily Cup emoji strip:** text, ready to paste.
-- **Dare link:** the creature plus the ghost's inputs, stored in the URL after `#`.
-- **How sharing works:**
-  - Phones: `navigator.share({files, text, url})`.
-  - Desktop: download the file, then open an `x.com/intent/post` link with the text pre-filled. The intent link can't attach media.
-
-### 14.3 Share-page previews (optional, M4)
-- Link format: `/r/{id}`. The card image uploads to R2, and the page serves OG/Twitter meta tags pointing at it, with the verified result shown as text.
-
-### 14.4 Launch content plan
-- **Trailer (30–45 s):**
-  - opens on a crude drawing coming alive (the Drawquarium emotional beat)
-  - then the chaos: a circle rolling, a creature with wheels, a hot dog winning, the handler being dragged
-  - ends on the line "Your drawing. Your athlete."
-- **Builder story post:** "How I made it" (process, timelapse, the funniest bugs).
-- **Seed content:** 20 pre-made clips, one funny race per day.
-- **Venue launches:** each new venue gets its own trailer.
-- **Expect the Bamzooki comparison:** reply to it warmly.
-
-### 14.5 Built-in hooks
-- Rule-breaking is intentional, and the trailer and FAQ show it: draw a circle and it rolls; draw wheels and they work.
-- Every result screen leads to a share with one tap.
-- A creature's page tracks: "Beaten 31 times · current king: @…".
+## 14. Virality and sharing
+- **Every share is a dare:** a link that opens straight into "draw a challenger", plays in one tap, and needs no sign-up.
+- **Result card:** the creature drawn large on the white sheet with lane, time, place and kind, in the architectural style (1200×630 and 1080×1350).
+- **Replay clip (later):** rendered from the deterministic replay, tilt-shift look, burned-in captions.
+- Phones use `navigator.share`; desktop copies the link.
+- **No AI-generated art** anywhere in the product or the marketing.
 
 ---
 
 ## 15. Visual design and microinteractions
 
-### 15.1 Overall direction
-- **UI style:** chunky and tactile: pebble-shaped buttons, stone or card panels, thick outlines.
-- **Fonts:** **Bricolage Grotesque** for headings (variable font, trimmed to the characters used); the system font for body text.
-- **Colour:** each venue sets the palette of its own screens; menus use warm cream `#f4f1e6` with near-black `#1d1b2e`.
-- **Logo:** the wordmark "SQUIGGLE CUP" with a small googly-eyed scribble jumping through the "Q".
-- **App icon:** the scribble with googly eyes on a gold rosette. Must read at 48 px.
-- **Landing page = the game:** the hero area is a drawing canvas that says "Draw something." You're drawing within 1 s. Below it: a looping 6 s clip, today's Daily Cup leader, and Play.
+### 15.1 Direction
+- **Clean, minimal, architectural.** Near-monochrome: white paper, grey linework, ink-black text, and one accent colour for "you".
+- **Typography:** a deliberate pairing from Google Fonts: a clean grotesk or neo-grotesk for UI and headings, plus a technical or mono face for numbers, labels and dimensions. Tabular figures for times.
+- **Layout:** portrait phone first, desktop supported; precise alignment on a grid; generous margins.
+- **Quality bar:** award-level, clearly better than Doodle Sports Day, OddHoof and Outdraw / Deviation Game. Learn from them; never copy their code or art.
 
 ### 15.2 Microinteractions
-- **Drawing:**
-  - wet strokes have a sheen that dries in 400 ms
-  - the ink meter drains
-  - the knuckle dot pulses when a limb attaches
-  - a wash fills in when the body closes
-  - eyes blink as soon as they're recognised
-  - a haptic tick per stroke on Android (iPhone browsers don't support vibration)
-- **Reveal:** drawings flip over at the same moment, like cards.
-- **Wake-up:** a blink, a stretch and a squash, and the venue's light flares (torch, spotlight, streetlight).
-- **Race:**
-  - the rhythm ring
-  - squash on each tap
-  - dust puffs and a small camera shake on collisions (no shake when the device asks for reduced motion)
-  - speed lines when you're over 6 m/s
-  - the torch flickers harder near the exit (Ochre)
-- **Finish:**
-  - photo finish: freeze, white flash, paint-stroke wipe, a "PHOTO" stamp
-  - then confetti or rosettes, or the daylight flood (Ochre)
-- **Results:** ratings count up with click sounds, and your creature gets a rosette stamp and is added to your gallery.
-- **Buttons:** squash to 96% when pressed, with a small ink splat; slight warmth on hover (desktop).
+- **Drawing:** ink dries with a subtle sheen in 300–400 ms; the preview creature reacts the moment a stroke ends; the kind label updates with a small fade.
+- **Reveal:** lane lines draw themselves in; creatures appear in their lanes and wake up.
+- **Race:** soft shadows and dust puffs; the camera glides with the pack; the focus band stays on the action.
+- **Finish:** a clean finish-line moment; photo-finish freeze for close races.
+- **Results:** times count up in tabular figures; rows slide in one by one.
+- **Buttons:** precise, tactile press states; visible focus rings.
+- Respect `prefers-reduced-motion`.
 
 ---
 
 ## 16. Audio
-- **Engine:** Web Audio API with one sprite file, about 150 KB; Kenney CC0 sound effects. Music is optional per venue and off by default on mobile.
-- **Sounds:**
-  - tap pluck (random pitch)
-  - on-beat drum, off-beat thud
-  - leap whoosh, landing thump
-  - flip boing
-  - elimination fade
-  - crowd gasp (Best in Show), crumble (STOMP), cave reverb (Ochre), rain (Fog), brass band (Tug)
-  - finish fanfare, photo-finish camera shutter
-- **Settings:** separate sound and music volumes; mute is remembered.
+- **Engine:** Web Audio API, a few synthesised sounds, no files needed for the hackathon.
+- **Sounds:** pen scratch while drawing, a soft click on buttons, a countdown tick, a finish chime, a camera shutter for photo finishes.
+- **Settings:** mute, remembered.
 
 ---
 
 ## 17. Screens and user flows
-1. **Landing / title:** canvas hero, Play, Daily Cup, Rooms, gallery, settings.
-2. **Venue select:** five cards (title, tagline, a looping preview).
-3. **Draw:** the pad, ink meter, pens, timer, status chip, Done.
-4. **Reveal and wake-up:** about 2 s.
-5. **Race:** countdown, the race itself, a position bar with creature icons, the commentary ticker, a tap zone. Spectate once you're done.
-6. **Results:** podium, comparison, fail replay, awards, scorecards, actions.
-7. **Share sheet:** card, clip, dare link, emoji strip.
-8. **Dare landing (from a link):**
-   - a banner: "{name} challenges you in {venue}"
-   - then: draw (or use your last creature), and race against their ghost
-9. **Rooms:** create or join, the lobby (players, venue, settings), then shared draw, race and results, and Rematch.
-10. **Daily Cup:** enter, the bracket view, the watch-and-bet screen, results, streak.
-11. **Gallery:** a grid of your creatures, each with its records, replays and a share button.
-12. **Settings:** sound, music, reduced motion, silhouette mode, name, language (English at launch).
+1. **Home:** Create room, Join with code, Play solo.
+2. **Lobby:** room code, players and their lanes, host's Start button, bots on/off.
+3. **Draw:** the sheet pad, timer, pens, Undo/Clear, name, live preview strip with the kind label.
+4. **Race:** the tilt-shift sheet with lanes, a thin progress bar, the commentary ticker.
+5. **Results:** placings, fact, awards, Rematch / Redraw / Share.
+6. **Dare landing:** "{name} dares you", then Draw.
+7. **Settings:** sound, reduced motion, silhouette mode.
 
 ---
 
-## 18. Technical architecture (free stack)
+## 18. Technical architecture
 
 ### 18.1 Client
 | Layer | Choice | Notes |
 |---|---|---|
 | Language and build | TypeScript, Vite 8 | `base: './'`, ES2022 target |
-| Rendering | PixiJS v8 (WebGL, with WebGPU where available) | Shaders for torch lighting, fog, grain and blur. A Canvas 2D fallback is acceptable for M0 |
-| Menus and screens | Svelte 5 | Small bundle; the game canvas stays separate from the UI |
-| Physics | `@dimforge/rapier2d-deterministic-compat` 0.21.0 | WASM is bundled inline in the JS; load it while the player draws |
-| Strokes | `perfect-freehand` 1.2.3 | For the look only; physics uses the simplified points |
+| Rendering | Canvas 2D | Tilt-shift via a perspective transform plus a blurred copy masked outside the focus band |
+| Simulation | Own deterministic creature physics (`src/body.ts`) | Replaces Rapier, which is no longer used |
+| Strokes | `perfect-freehand` | For the look only |
 | Audio | Web Audio API | No library |
-| Video | WebCodecs + Mediabunny (or mp4-muxer) | Replays rendered offline at any size |
-| Storage | `localStorage` / IndexedDB, wrapped in try/catch | Gallery, settings and the device ID. X's built-in browser keeps storage separate, so the game must work with empty storage |
+| Storage | `localStorage`, wrapped in try/catch | Last creature, settings |
 
-**Module layout:**
-- `geom` (point maths), `rng` (seeded random), `analyze` (reading the drawing), `creature` (physics creature)
-- `venues/*` (course, rules and voice for each venue), `race` (the simulation), `bots`
-- `comedy` (names, commentary, awards, judges), `render/*` (per-venue renderers), `audio`
-- `share` (cards, clips), `encode` (link and replay bytes), `net` (rooms), `ui/*` (Svelte)
+**Module layout:** `geom`, `dmath` (deterministic trig), `rng`, `analyze` (reading the drawing), `creature` (kind and tuning), `body` (physics), `race` (simulation), `bots` (generated creatures), `comedy` (names, commentary, awards), `encode` (dare links), `pad` (drawing + preview), `render` (sheet and tilt-shift), `net` (rooms), `main` (screens).
 
-**The simulation never touches the browser page (DOM)**, so the same code runs headless in Workers and in tests.
+**The simulation never touches the page (DOM)**, so the same code runs in the browser, in tests and in a Worker.
 
-### 18.2 Backend (Cloudflare free tiers; check current limits before launch)
+### 18.2 Backend
 | Need | Service |
 |---|---|
-| Static hosting | Cloudflare Pages (`*.pages.dev` until there's a domain). Static traffic is unmetered |
-| API | Workers: score submission, leaderboards, cup, bets, reports |
-| Live rooms and matchmaking | Durable Objects (SQLite-backed; on the free plan since 2025), using the WebSocket mode that doesn't bill idle connections |
-| Database | D1 (SQLite) |
-| Files | R2 (no download fees): replays, cup results JSON, share cards, thumbnails |
-| Scheduled jobs | Workers Cron Triggers: Daily Cup at 00:00 UTC, season rollover |
-| Analytics | Cloudflare Web Analytics (free, no cookies) |
-| Errors | Sentry free developer plan |
+| Static hosting | Cloudflare Pages |
+| Rooms | Cloudflare Worker + Durable Object relay (`server/`). Fallback: the same relay as a Node `ws` server for local/LAN play |
+| Later | D1 for leaderboards, R2 for share cards |
 
-### 18.3 Design so going viral costs nothing
-- **Free path:** opening a dare link, playing and sharing use only static files plus data in the URL. No Worker requests.
-- **Server path:** only optional extras touch Workers or Durable Objects: score submission, the cup, rooms and bets.
-- **If a free limit is hit:** leaderboards show "updating soon", rooms fall back to ghost races, and solo play is unaffected.
+### 18.3 Going viral costs nothing
+- Solo play and dare links use only static files plus data in the URL.
+- Rooms use a relay that only forwards a few small messages per game.
 
 ---
 
-## 19. Data model and API
-
-### 19.1 D1 tables
+## 19. Data model and API (after the hackathon)
 ```sql
-players(id TEXT PK, name TEXT, created INT, flags INT)                 -- anonymous device id
-creatures(id TEXT PK, player_id TEXT, venue TEXT, drawing BLOB, name TEXT,
-          created INT, reports INT DEFAULT 0, hidden INT DEFAULT 0)
-runs(id TEXT PK, creature_id TEXT, player_id TEXT, venue TEXT, seed INT,
-     inputs BLOB, time_ms INT, verified INT, day TEXT, created INT,
-     legs INT, smashed INT, airtime_ms INT, flips INT)                  -- category boards read these columns
-cup_entries(day TEXT, creature_id TEXT, player_id TEXT, PRIMARY KEY(day, player_id))
-cup_results(day TEXT PK, venue TEXT, r2_key TEXT)                       -- bracket stored in R2
-bets(day TEXT, player_id TEXT, heat TEXT, pick TEXT, stake INT, PRIMARY KEY(day, player_id, heat))
-ratings(player_id TEXT, season TEXT, mu REAL, sigma REAL, games INT, PRIMARY KEY(player_id, season))
+creatures(id TEXT PK, player_id TEXT, drawing BLOB, name TEXT, kind TEXT, created INT, reports INT DEFAULT 0, hidden INT DEFAULT 0)
+races(id TEXT PK, seed INT, created INT)
+entries(race_id TEXT, creature_id TEXT, lane INT, time_ms INT, place INT, PRIMARY KEY(race_id, lane))
 reports(id TEXT PK, creature_id TEXT, reporter TEXT, reason TEXT, created INT)
 ```
-
-### 19.2 HTTP and WebSocket endpoints
 | Method | Path | Purpose |
 |---|---|---|
-| POST | `/api/runs` | Submit a run (drawing, venue, seed, inputs, claimed time). The server re-runs and stores it |
-| GET | `/api/leaderboard?venue=&board=&day=&page=` | Leaderboards |
-| GET | `/api/ghosts?venue=&rating=` | Ghost opponents for Quick Race and matchmaking |
-| POST | `/api/cup/enter` | Enter today's Daily Cup |
-| GET | `/api/cup/:day` | Bracket plus seeds (clients replay locally) |
-| POST | `/api/bets` | Place a pretend-points bet within the window |
-| POST | `/api/report` | Report a creature |
-| WS | `/room/:code` | Room Durable Object (section 12) |
-| WS | `/match?mode=ranked&venue=` | Matchmaker Durable Object |
-
-**Rate limits:** submissions are limited per device ID and per IP. Payloads are capped (drawing ≤ 4 KB, inputs ≤ 8 KB).
+| WS | `/room/:code` | Room relay (section 12) |
+| POST | `/api/races` | Submit a race for verification (later) |
+| GET | `/api/leaderboard` | Leaderboards (later) |
 
 ---
 
 ## 20. Performance, responsiveness, PWA, accessibility
-
-### 20.1 Speed budgets
-| Item | Target |
-|---|---|
-| First load (HTML, CSS, core JS) | ≤ 120 KB gzipped |
-| Canvas ready to draw | under 1 s on a mid-range Android over 4G |
-| Physics, renderer, audio, venue art | lazy-loaded during the draw phase |
-| Art per venue | ≤ 300 KB (AVIF/WebP) |
-| Frame rate | 60 fps on a 2020 mid-range Android with 6 creatures; physics at 60 steps per second, with smoothing for 120 Hz screens |
-| Lighthouse (landing page) | Performance ≥ 95, Accessibility ≥ 95 |
-
-### 20.2 Screen sizes
-- **Portrait phone first** (360–430 px wide). Landscape on phones is supported.
-- **Camera:**
-  - Shows about 9 m of course in portrait and 16 m in landscape or on desktop.
-  - Sits ahead of the player's creature so you can see what's coming.
-  - Follows the leader once the player is done.
-- **Tablet and desktop:** a bigger view of the course, with standings in a side panel.
-- **Safe areas:** use `env(safe-area-inset-*)` for notches; set `touch-action: none` on the pad and race area so the page doesn't scroll or zoom.
-- **Input:** Pointer Events handle mouse, touch and pen; no hover-only actions.
-
-### 20.3 PWA (installable web app)
-- Manifest, icons (192/512 px plus maskable), a dark-cream theme colour.
-- Service worker (vite-plugin-pwa or a hand-written one):
-  - pre-cache the app shell
-  - fetch HTML network-first so new versions arrive
-- **Offline:** Quick Race against cached ghosts, and the gallery. Ranked, rooms and the cup need a connection.
-- **Install prompt:** shown after the 2nd completed race, never the first. iPhone users get an "Add to Home Screen" hint instead.
-- **X's built-in browser:** must work there with no install, no pop-ups and storage that may be empty.
-
-### 20.4 Accessibility
-- **Reduced motion:** respect the device setting (no camera shake, gentler flashes).
-- **Colour blindness:** each player has a stencil handprint marker as well as a colour.
-- **Readable text:** captions and commentary are large and high-contrast.
-- **One-button play:** only tap and hold, so it's playable with a single switch input.
-- **Sound:** separate sound and music volumes.
+- **First load:** ≤ 120 KB gzipped; the drawing pad is ready in under 1 s on a mid-range phone.
+- **Frame rate:** 60 fps with 4 creatures on a 2020 mid-range Android; the tilt-shift blur degrades gracefully.
+- **Screens:** portrait phone first (360–430 px wide), landscape and desktop supported; safe areas respected; `touch-action: none` on the pad.
+- **Accessibility:** lane numbers plus the accent colour (never colour alone), large readable times and commentary, reduced motion respected, full keyboard support for menus.
+- **PWA (later):** installable, offline solo play.
 
 ---
 
 ## 21. Moderation and safety
-- **Expect rude drawings.** Rely on design and reports, not a classifier.
-- **Reports:** creatures shown publicly (gallery, leaderboards, cup) are hidden after N reports, scaled by audience.
-- **Human review:** the daily top 100 and every cup finalist are reviewed by a person before being featured.
-- **Silhouette mode:** shows other players' creatures as plain filled shapes in the player's ink colour. On by default for players who say they're under 13, and in streamer mode.
+- Expect rude drawings; rely on reports and silhouette mode rather than a classifier.
+- **Silhouette mode** shows other players' creatures as plain filled shapes. On by default for under-13s.
 - **Names:** profanity filter, 24-character limit.
-- **Betting:** pretend points only. No real money, no purchasable points, ever.
-- **Data:** an anonymous device ID; no personal data collected; a privacy page explains what's stored.
+- **Data:** no personal data; rooms are temporary.
 
 ---
 
 ## 22. Analytics and success metrics
-**Events:** `land`, `draw_start`, `draw_done`, `race_start`, `race_end`, `rematch`, `share_open`, `share_done{type}`, `dare_open`, `dare_play`, `install`, `room_create`, `room_join`, `cup_enter`, `bet`.
+**Events:** `land`, `draw_start`, `draw_done`, `race_start`, `race_end`, `rematch`, `redraw`, `share`, `dare_open`, `room_create`, `room_join`.
 
-| Metric | Target (my estimates, adjust after launch) |
+| Metric | Target |
 |---|---|
 | Time from opening to first race | < 30 s (median) |
-| Rematch rate | > 40% of finished races |
-| Share rate | > 8% of finished races |
-| Dare link open → play | > 50% |
-| Day-1 / Day-7 return | > 25% / > 8% |
-| Daily Cup entries | > 10% of daily players |
-| Playtest laugh test (M0) | ≥ 3 of 5 strangers laugh out loud within 30 s |
+| Rematch or redraw rate | > 50% of finished races |
+| Win rate per kind in real games | no kind above 1.5× its fair share |
+| Dare link open → race | > 50% |
+| Playtest | people watch the preview and say "it's alive" |
 
 ---
 
 ## 23. Testing plan
-- **Determinism:**
-  - The same drawing, seed and inputs must give an identical hash of all final body positions on Chrome, Firefox, Safari, Android Chrome and iOS Safari, and in the headless Worker.
-  - Run in CI on every physics change.
-- **Physics fuzz:**
-  - Generate 1,000 random creatures (blobs, sticks, scribbles, circles, no limbs, 12 limbs) and race them with the bot pilot.
-  - Check: no creature averages over 9 m/s, there are no NaNs, and nobody stays stuck forever (the nudge works).
-  - Watch for sliding or vibrating creatures winning.
-- **Balance:** win rate by number of legs, body size and ink use, per venue. No single shape should win more than about 35% of races in the shared field.
-- **Netcode:** simulated 50/150/300 ms delay and 2% packet loss, plus reconnect tests.
-- **Devices:** a low-end Android, an iPhone in Safari, and X's built-in browser on both, tested by tapping real links.
-- **Playtests:** the laugh test at every milestone; record sessions and note where people laugh and where they get confused.
+- **Classification:** a test set of hand-style drawings of every kind, especially wing variants and snakes.
+- **Motion:** every kind finishes the lane with natural motion (no backwards sliding, no pogo bounce, no falls on flat ground). Confirmed by watching screenshots and the live build, not only by numbers.
+- **Determinism:** same drawings and seed give an identical state hash, in Node and in each browser.
+- **Fairness:** the balance test in section 8.
+- **Encoding:** dare links round-trip and re-encode to the same bytes.
+- **Rooms:** 2–4 devices on different networks finish a race and three rematches in a row.
+- **Screens:** headless screenshots of draw, preview, race and results at phone and desktop sizes; final review in a real browser (Helium).
 
 ---
 
 ## 24. Milestones
 | Milestone | What gets built | What has to be true to continue |
 |---|---|---|
-| **M0: core proof** | Draw pad with live feedback, analysis, physics creature, tap and leap, Best in Show course (no handler yet), race 1–3 ghosts, basic results, dare link (URL after `#`), Canvas 2D rendering allowed | 3 of 5 strangers laugh within 30 s and press rematch. Ugly creatures are fun to race. No sliding exploit wins |
-| **M1: five venues** | All 5 venues with their rules and visual style, the handler and leash, bots, all comedy features, awards, judges, result card, venue select, PixiJS renderer | Every venue is readable and fun on a phone; determinism matches across browsers |
-| **M2: rooms** | Durable Object rooms with 2–6 players, lockstep netcode, spirits in Ochre and Fog, Tug Day 2v2 online | Shoving feels fair at about 100 ms |
-| **M3: competition** | Checked leaderboards, category boards, ranked play with matchmaking and ghost fill, Daily Cup with betting, Graft | Day-2 retention; the cup runs reliably every day |
-| **M4: launch** | Replay clip rendering, PWA, polish pass, logo, icon, share-page previews, trailer, launch on X, r/WebGames, itch.io and web portals (e.g. Poki) | Share rate, D1/D7 return, dare-link conversion |
-| **Later** | Notebook venue, a new venue each month, cosmetic-only extras (inks, rosettes, gallery frames) | |
+| **M0: the creature** | Drawing reader (with reliable wings), creature movement for every kind, live preview, fairness test | Every kind looks alive in the preview; balance test passes |
+| **M1: the Sheet** | Architectural sheet renderer, tilt-shift camera, lanes, race and results screens, solo vs bots | Looks award-level on a phone; a full solo race works |
+| **M2: rooms** | Relay, lobby, simultaneous draw, shared seed race, host results, rematch | 3 devices finish a race and rematch 3 times |
+| **M3: share** | Dare links, result card, deploy | A dare link replays the same race on another device |
+| **Later** | Daily race, leaderboards, gallery, replay clips, more scenes | |
 
 ---
 
 ## 25. Risks and mitigations
 | Risk | Mitigation |
 |---|---|
-| Physics exploits (sliding, vibrating, flinging) | Progress counts only on the ground; motor torque capped by weight; leap capped with cooldown; fuzz tests; server speed sanity check |
-| Some drawings can't move at all | Spoke-style motors make almost any limb produce motion; legless bodies still roll or wobble forward; handler nudges; the "Unbothered" award turns failure into a joke |
-| Too many creatures to read | At most 6 per race; your creature is highlighted; the others are drawn slightly transparent |
-| Crowded genre (Doodle Smash, Scrawlcraft, Kiln, Drawquarium) | Stand out through venues, deadpan comedy, playable dare links and the Daily Cup. Lead with the 5-second clip that shows shape is physics |
-| Dark venues look muddy in feeds | Share clips end on bright frames (daylight, rosettes); Best in Show and STOMP lead the marketing |
-| Free-tier limits during a spike | The viral path is static only; server features degrade gracefully |
-| Rude drawings | Reports, human review of featured entries, silhouette mode |
-| Netcode lag makes shoving feel unfair | Instant local feedback; adjustable input delay; rollback if needed |
-| Determinism breaks across browsers | Deterministic Rapier build, no browser-dependent maths in the simulation, cross-browser CI hash test |
-| Comparison to Bamzooki and existing games | Welcome it in replies; the playable link answers it |
+| Motion still looks unnatural | Judge by watching; tune per kind; keep render-only polish (shadows, dust) separate from the simulation |
+| One kind dominates | Balance test with win rates per kind; per-kind trade-offs |
+| Wings and other parts misread | A hand-style test set; tune thresholds against it |
+| Tilt-shift blur is slow on phones | Cheaper blur fallback; keep your own lane sharp |
+| Floating-point differences between devices in rooms | Host results are authoritative; polynomial trig only in the simulation |
+| Rude drawings | Reports and silhouette mode |
+| Direction changes late in the hackathon | Keep the scope in section 28; cut anything that risks the deadline |
 
 ---
 
-## 26. Open questions and later experiments
-- **Final name:** "Squiggle Cup" is a placeholder; check trademarks and domains.
-- **Limb repaint between sections** (inspired by Scribble Rider and Draw Climber): a 5 s break at checkpoints to redraw limbs with leftover ink. Test after M1 against a version without it, because it may add too much to think about.
-- **Machine-learned gaits:** an optimiser that tunes each creature's gait during a "warm-up". Only if spoke motion feels flat in playtests.
-- **Animating the body as well as the limbs** (in the style of Meta's Animated Drawings, a mesh that bends) so it doesn't just ride the limbs: render-only, later.
-- **Languages:** English at launch; Japanese and Korean are strong candidates given where this genre is popular.
-- **Monetisation:** cosmetic only, or none. Decide after M4 based on traffic.
+## 26. Open questions and later ideas
+- **More scenes** after the Sheet. Earlier venue concepts, now parked: Best in Show (dog-show agility), STOMP (toy city), Ochre (cave paintings), Fog (misty window), Tug Day (tug of war), Notebook (lined paper). Any future scene keeps the rules in section 2: no player input, lanes, no hazards unless deliberately reintroduced.
+- **Hazards, page turns, chasing darkness:** dropped for now.
+- **Tap or cheer controls:** dropped; the drawing is the whole game.
+- **Languages:** English first; Japanese and Korean later.
+- **Monetisation:** cosmetic only, or none.
 
 ---
 
@@ -863,8 +547,10 @@ reports(id TEXT PK, creature_id TEXT, reporter TEXT, reason TEXT, created INT)
 
 ---
 
+---
+
 ## 28. Hackathon build (trmi × Lovhack × Nexus 2026)
-This section overrides the rest of the PRD until submission. Everything not listed here waits until after the hackathon.
+This section overrides the rest of the PRD until submission. Everything not listed here waits until after the hackathon. Updated Nov 1, 21:30 JST for the new direction (the Sheet, self-running races).
 
 ### 28.1 Event facts
 - **Theme:** "Multiplayer Everything": people must be able to use it together.
@@ -877,40 +563,41 @@ This section overrides the rest of the PRD until submission. Everything not list
 - **Links:** https://trmi.dev/hackathon · https://lovhack-trmi-2026.devpost.com · rules: https://lovhack-trmi-2026.devpost.com/rules · Discord (deadline questions): https://discord.gg/qCmA6fFS2
 
 ### 28.2 The one thing we ship
-**A live room where 2–4 friends draw creatures at the same time, watch them wake up together, and race them on one Best in Show course from their own phones or laptops.**
+**A live room where 2–4 friends draw creatures at the same time, watch them come alive in the live preview, then see them race themselves side by side in their own lanes on a clean white architectural sheet, from their own phones or laptops.**
 
 Demo story (what the video shows):
 1. Player 1 creates a room and reads out the 4-letter code. Players 2 and 3 join from other devices.
-2. A 20 s draw phase runs for everyone at once, with the same ink for all.
-3. All creatures are revealed together, then: countdown, race, shoving, a creature stuck in the tunnel, a handler nudge.
-4. Results: placings, one award per creature, and the "shape is physics" fact ("Winner's legs: 2.1× longer").
-5. Rematch with one tap. Someone redraws a better shape and wins, which shows that the game rewards design skill.
+2. A 20 s draw phase runs for everyone at once. Each player's preview shows their creature walking, hopping, flying, rolling or slithering the moment they draw it.
+3. The creatures appear in their lanes on the tilt-shift sheet and race themselves. No tapping.
+4. Results: placings, each creature's kind and time, and one honest fact ("The winner's legs were 1.8× longer").
+5. Someone redraws a better shape, rematches and wins. The drawing is the whole game.
 
 ### 28.3 Scope
 | In | Cut (back to the main PRD after the hackathon) |
 |---|---|
-| Draw pad with ink meter (6.1), drawing analysis (6.3, done), physics creature (7.1–7.4, done) | Live drawing feedback 6.2, dare links, compact encoding |
-| Best in Show course: flat ground, hurdles, seesaw, tunnel, finish. Weave poles if time allows | Handler and leash, judges, other four venues |
-| Tap to stride, hold and release to leap (8) | Ghost replays, leaderboards, ranked play, Daily Cup, Graft |
-| Race flow: countdown, finish, nudge, end rules, ranking (9.1) | Replay clips, share cards, PWA |
-| Results: podium, one award each, one comparison fact, Rematch / Redraw (9.2, simplified) | PixiJS, Svelte, audio beyond a few Web Audio blips |
-| Rooms of 2–4 by 4-letter code; empty seats can be filled with bots (11.1 bot pilot) | Cross-browser determinism (not needed with the host model below) |
-| Canvas 2D renderer with googly eyes; works on a phone | Accounts, moderation, analytics |
+| Drawing pad with 20 s timer, no ink limit (6.1) | Leaderboards, daily race, gallery, ranked play |
+| Drawing reader with reliable wings (6.3–6.4) | Replay clips, result cards, PWA |
+| Creature movement for every kind (7) and the live preview (6.2) | Silhouette mode, reports |
+| Fairness balance test (8) | More scenes |
+| The Sheet: white architectural page, lanes, tilt-shift (5) | Dare links (keep if time allows; encoding already works) |
+| Race flow and results with Rematch / Redraw (9) | Audio beyond a few Web Audio sounds |
+| Rooms of 2–4 by 4-letter code, bots fill empty lanes (11.1, 12) | Cross-browser determinism checks (host results are authoritative) |
 
-### 28.4 Multiplayer design (replaces section 12 for the hackathon)
-Lockstep needs cross-browser determinism we don't have yet (see the open items in prd/progress.json), so we use a **host-authoritative** model instead:
-- **Relay server:** a tiny WebSocket relay, one room per 4-letter code. It only forwards messages and assigns slots. Built as a Cloudflare Worker + Durable Object in `server/` (free plan), deployed with `wrangler`. Static client on Cloudflare Pages. Fallback if Cloudflare setup blocks us: the same relay as a Node `ws` server on any free host.
-- **Host:** the room creator's browser runs the only Rapier simulation and sends snapshots `{tick, bodies:[x,y,angle]...}` at 20 Hz. Guests interpolate between snapshots.
-- **Guests:** send their drawing once (simplified points, a few hundred bytes of JSON), then only inputs `{type: tap|press|release}`. They play their own sound and squash effects locally the moment they press.
-- **Messages:** `join{name}`, `hello{slot, players}`, `lobby{players}`, `phase{draw|reveal|race|results, endsAt}`, `drawing{points}`, `input{type}`, `snap{tick, bodies}`, `results{ranking, awards, facts}`, `rematch`.
-- **Disconnects:** a guest's creature keeps running, driven by the bot pilot. If the host leaves, the room ends with a "host left" screen (acceptable for the demo).
+### 28.4 Multiplayer model (simplest thing that works)
+- **Relay server:** a tiny WebSocket relay, one room per 4-letter code. It only forwards messages and assigns lanes. Built as a Cloudflare Worker + Durable Object in `server/` (free plan), deployed with `wrangler`. Static client on Cloudflare Pages. Fallback if Cloudflare setup blocks us: the same relay as a Node `ws` server on any free host.
+- **No race inputs:** creatures race themselves, so only drawings and one seed travel.
+- **Host:** when everyone has submitted (or the draw timer ends), the host sends `start{seed, drawings}`. Every client runs the same simulation locally. The host then sends `results{ranking, times}`, which everyone displays, so a tiny floating-point difference on one device can never change the winner.
+- **Messages:** `join{name}`, `hello{lane, players}`, `lobby{players}`, `phase{draw|race|results, endsAt}`, `drawing{points}`, `start{seed, drawings}`, `results{ranking, times}`, `rematch`.
+- **Disconnects:** a dropped player's creature still races (it runs itself). If the host leaves, the room ends with a "host left" screen (acceptable for the demo).
 
 ### 28.5 Team split (3 people, all in trmi)
 | Seat | Owns | First prompts |
 |---|---|---|
-| A: Simulation | `src/race.ts`, `src/course.ts`, `src/bots.ts` | Race loop, Best in Show course, ranking, headless test of a full race |
-| B: Play screens | `index.html`, `src/main.ts`, `src/render.ts`, `src/ui/*` | Draw pad + ink meter, Canvas 2D renderer, lobby / draw / race / results screens |
-| C: Rooms + ship | `server/`, `src/net.ts`, deploy, Devpost | Relay, room join by code, host snapshots, deploy to Pages, demo video, Devpost write-up |
+| A: Simulation | `src/analyze.ts`, `src/creature.ts`, `src/body.ts`, `src/race.ts`, `src/bots.ts`, `src/dmath.ts`, `test/` | Reliable wing detection; snake slithers forward; natural gaits for every kind; fairness balance test |
+| B: Play screens | `index.html`, `src/main.ts`, `src/pad.ts`, `src/render.ts`, `src/style.css`, `src/ui/*` | The Sheet renderer with lanes and tilt-shift; draw screen with live preview; lobby / draw / race / results screens |
+| C: Rooms + ship | `server/`, `src/net.ts`, deploy, Devpost | Relay, room join by code, `start{seed, drawings}` and host results, deploy to Pages, demo video, Devpost write-up |
+
+A working starting point for seats A and B exists on branch `m0-prototype` (`src/body.ts`, `src/analyze.ts`, `src/race.ts`, `src/pad.ts`, `scripts/run-ts.mjs`, `test/sim.test.ts`): self-running races for every kind, deterministic, all kinds finishing in tests. Its cave renderer is replaced by the Sheet; its known bugs are listed in section 7.3.
 
 Rules: each seat works in its own trmi **lane** (one branch per feature). Teammates approve the agent's edit cards in trmi (approval mode: Majority or Everyone, never Auto on main). A finished lane opens a PR into trmi's main; the captain merges trmi's main into the GitHub default branch before deploys. Use trmi's main session only for planning and small edits everyone needs right away. Watch trmi's overlap warnings when two lanes touch the same file. Each seat writes a one-line handoff in prd/progress.json when a feature changes status. Keep a few screenshots of trmi reviews for the Devpost collaboration section.
 
@@ -918,17 +605,20 @@ Rules: each seat works in its own trmi **lane** (one branch per feature). Teamma
 | Time | Goal |
 |---|---|
 | 19:30–20:00 | Repo on GitHub, shared trmi project, everyone can prompt. `npm run dev` shows a page |
-| 20:00–23:30 | Seats A/B/C build in parallel. Solo race against bots works locally by 23:30 |
+| 21:30 | **Direction change:** the Sheet scene, self-running races, no tapping, fairness. This section updated |
+| 21:30–23:30 | Seats A/B/C build in parallel. A solo race on the Sheet works locally by 23:30 |
 | 23:30–01:00 | Integrate rooms. Three devices in one room finish a race online |
-| 01:00–02:30 | Three-player playtests, fix what breaks, tuning, polish results screen |
+| 01:00–02:30 | Three-player playtests, fix what breaks, balance tuning, polish |
 | 02:30–03:30 | Record the demo video (three real players, 2–3 min) |
 | 03:30–04:30 | Devpost entry, README, trmi collaboration write-up. **Submit** |
 | 04:30–05:00 | Buffer only. No new features |
 
-Feature freeze at 02:30 no matter what. A working single course beats unfinished extras.
+Feature freeze at 02:30 no matter what. A working Sheet race in a room beats unfinished extras.
 
 ### 28.7 Definition of done
-- A public URL where 3 people on different networks can join one room, draw, race and see results.
+- A public URL where 3 people on different networks can join one room, draw, watch the race and see results.
+- Every kind visibly moves the way its shape suggests, in the preview and in the race.
+- No kind wins every time: the balance test passes.
 - Rematch works at least 3 times in a row without reloading.
 - Phone portrait and desktop both playable.
 - Public GitHub repo with README, demo video uploaded, Devpost submitted before 5:00 AM JST.

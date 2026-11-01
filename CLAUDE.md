@@ -7,5 +7,6 @@
 - Submit on Devpost by 4:30 AM JST. Feature freeze at 2:30 AM JST: after that only bug fixes, the demo video and the write-up.
 - Work happens in the shared trmi project. Use trmi's main session only for planning and tiny shared edits; every feature gets its own lane (its own branch), approved by a teammate in trmi, then a PR into trmi's main. The project owner merges trmi's main into the GitHub default branch.
 - Stay inside your seat's files (PRD §28.5) to avoid merge conflicts; coordinate in trmi before touching another seat's files.
-- Multiplayer is host-authoritative (§28.4). Don't spend time on lockstep or cross-browser determinism.
+- The game (since Nov 1, 21:30): you draw, the creature races itself in its own lane on the white architectural Sheet. No tapping, no hazards, no dark, no Rapier. Fairness across creature kinds is required (PRD §2, §5, §7, §8).
+- Rooms share only drawings + one seed; every client simulates, the host's results are authoritative (§28.4). Don't spend time on lockstep or cross-browser determinism.
 - Prefer working and demoable over complete. If something risks the deadline, cut it and note the cut in the progress handoff.
