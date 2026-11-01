@@ -1,0 +1,6 @@
+node_modules
+dist
+prd/index.html
+prd/.snapshot.json
+.claude/worktrees
+.claude/settings.local.json

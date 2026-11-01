@@ -1,0 +1,20 @@
+{
+  "name": "squiggle-cup",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc --noEmit && vite build",
+    "preview": "vite preview",
+    "prd": "node prd/build.mjs"
+  },
+  "dependencies": {
+    "@dimforge/rapier2d-deterministic-compat": "^0.21.0",
+    "perfect-freehand": "^1.2.3"
+  },
+  "devDependencies": {
+    "typescript": "^7.0.2",
+    "vite": "^8.3.5"
+  }
+}

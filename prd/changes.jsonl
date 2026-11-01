@@ -1,0 +1,29 @@
+{"t":"2026-11-01 10:28","kind":"baseline","text":"Visual PRD started: 82 sections, 58 features tracked"}
+{"t":"2026-11-01 10:33","kind":"spec","ref":"intro","text":"§  edited (+1 −0 lines)"}
+{"t":"2026-11-01 10:33","kind":"spec","ref":"s28","text":"§28 Hackathon build (trmi × Lovhack × Nexus 2026) added"}
+{"t":"2026-11-01 10:33","kind":"spec","ref":"s28-1","text":"§28.1 Event facts added"}
+{"t":"2026-11-01 10:33","kind":"spec","ref":"s28-2","text":"§28.2 The one thing we ship added"}
+{"t":"2026-11-01 10:33","kind":"spec","ref":"s28-3","text":"§28.3 Scope added"}
+{"t":"2026-11-01 10:33","kind":"spec","ref":"s28-4","text":"§28.4 Multiplayer design (replaces section 12 for the hackathon) added"}
+{"t":"2026-11-01 10:33","kind":"spec","ref":"s28-5","text":"§28.5 Team split (3 people, all in trmi) added"}
+{"t":"2026-11-01 10:33","kind":"spec","ref":"s28-6","text":"§28.6 Timeline (JST, Nov 1–2) added"}
+{"t":"2026-11-01 10:33","kind":"spec","ref":"s28-7","text":"§28.7 Definition of done added"}
+{"t":"2026-11-01 10:33","kind":"progress","text":"H · GitHub repo + shared trmi project: added as planned"}
+{"t":"2026-11-01 10:33","kind":"progress","text":"H · Runnable entry point (index.html, src/main.ts): added as planned"}
+{"t":"2026-11-01 10:33","kind":"progress","text":"H · Draw pad with ink meter: added as in-progress"}
+{"t":"2026-11-01 10:33","kind":"progress","text":"H · Reading the drawing: added as built"}
+{"t":"2026-11-01 10:33","kind":"progress","text":"H · Physics creature, locomotion, leap, upright: added as built"}
+{"t":"2026-11-01 10:33","kind":"progress","text":"H · Best in Show course (simplified): added as planned"}
+{"t":"2026-11-01 10:33","kind":"progress","text":"H · Race loop: countdown, finish, nudge, ranking: added as in-progress"}
+{"t":"2026-11-01 10:33","kind":"progress","text":"H · Bot pilot for empty seats: added as planned"}
+{"t":"2026-11-01 10:33","kind":"progress","text":"H · Canvas 2D renderer with googly eyes: added as in-progress"}
+{"t":"2026-11-01 10:33","kind":"progress","text":"H · Results: podium, awards, comparison fact, rematch: added as planned"}
+{"t":"2026-11-01 10:33","kind":"progress","text":"H · Relay server (rooms by 4-letter code): added as planned"}
+{"t":"2026-11-01 10:33","kind":"progress","text":"H · Host-authoritative snapshots + guest inputs: added as planned"}
+{"t":"2026-11-01 10:33","kind":"progress","text":"H · Lobby, draw, reveal, race, results screens: added as planned"}
+{"t":"2026-11-01 10:33","kind":"progress","text":"H · Deployed public URL: added as planned"}
+{"t":"2026-11-01 10:33","kind":"progress","text":"H · 3-player online playtest: added as planned"}
+{"t":"2026-11-01 10:33","kind":"progress","text":"H · Demo video: added as planned"}
+{"t":"2026-11-01 10:33","kind":"progress","text":"H · Devpost submission + trmi write-up: added as planned"}
+{"t":"2026-11-01 10:33","kind":"handoff","text":"Handoff updated"}
+{"t":"2026-11-01 10:37","kind":"spec","ref":"s28-5","text":"§28.5 Team split (3 people, all in trmi) edited (+1 −1 lines)"}
