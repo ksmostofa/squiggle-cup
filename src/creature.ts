@@ -1,274 +1,87 @@
-import RAPIER from '@dimforge/rapier2d-deterministic-compat';
-import type { Anatomy, Stroke } from './analyze';
-import { type Pt, polyLen, rdp } from './geom';
+import type { Anatomy, Kind } from './analyze';
+import { bbox } from './geom';
 
-export const PX = 1 / 200; // pad pixels -> metres (the 600px pad is 3m across)
+// What kind of creature a drawing is, how big it is, and how it races.
+// Fairness (PRD §7.5): every kind gets a profile that trades off against the
+// others, tuned so expected finish times fall in a narrow band:
+//   top    – cruising speed it settles at, m/s
+//   ramp   – seconds to reach it (slow starters cruise faster)
+// Within a kind, a better-drawn creature (the proportions that kind rewards)
+// runs a few percent faster. No luck: the drawing (and your rhythm) decides.
 
-export interface Part {
-  rb: RAPIER.RigidBody;
-  joint?: RAPIER.RevoluteImpulseJoint;
-  strokes: { pts: Pt[]; color: string; w: number }[]; // local metres, y up
-}
+export const DT = 1 / 60;
 
-export interface Pilot {
-  throttle: number;
-  charge: number | null;   // seconds the leap button has been held
-  leapCooldown: number;
-}
-
-export interface CreatureStats {
-  taps: number;
-  flips: number;
-  airtime: number;
-  bestAir: number;
-  upsideTime: number;
-  maxSpeedUpside: number;
-  nudges: number;
-  smashed: number;
-}
-
-// Each creature gets its own collision bit so its parts never collide with
-// each other, but still hit the world and the other creatures.
-const WORLD_BIT = 1;
-export const worldGroups = (WORLD_BIT << 16) | 0xffff;
-const creatureGroups = (idx: number) => {
-  const bit = 1 << (idx + 1);
-  return (bit << 16) | (0xffff & ~bit);
+export interface KindInfo { label: string; verb: string; blurb: string }
+export const KINDS: Record<Kind, KindInfo> = {
+  biped: { label: 'Two-legged', verb: 'runs', blurb: 'Quick off the line. Long, even legs run faster.' },
+  quadruped: { label: 'Four-legged', verb: 'trots', blurb: 'Steady all the way. Even legs keep a clean trot.' },
+  centipede: { label: 'Many-legged', verb: 'scuttles', blurb: 'Fast start, modest top speed. More legs, smoother ripple.' },
+  hopper: { label: 'One-legged', verb: 'hops', blurb: 'Bounds in streaks. A longer leg means bigger hops.' },
+  flyer: { label: 'Flying', verb: 'flaps', blurb: 'Slow to take off, fast once up. Bigger wings carry it better.' },
+  roller: { label: 'Rolling', verb: 'rolls', blurb: 'Slow to get going, then rolls fast. Rounder is better.' },
+  worm: { label: 'Slithering', verb: 'slithers', blurb: 'Off at once, never quick. Longer bodies slither faster.' },
+  jelly: { label: 'Wobbly', verb: 'oozes', blurb: 'Off at once, wobbles along. A clean blob oozes best.' },
+  scribble: { label: 'Scribble', verb: 'flails', blurb: 'Pure chaos. Sometimes it works.' },
 };
 
-export class Creature {
-  body: Part;
-  limbs: Part[] = [];
-  eyes: { c: Pt; r: number; px: number; py: number; vx: number; vy: number }[];
-  mass = 0;
-  height = 0;
-  reach = 0;
-  pilot: Pilot = { throttle: 0, charge: null, leapCooldown: 0 };
-  stats: CreatureStats = { taps: 0, flips: 0, airtime: 0, bestAir: 0, upsideTime: 0, maxSpeedUpside: 0, nudges: 0, smashed: 0 };
-  finishTime: number | null = null;
-  eliminatedAt: number | null = null;
-  grounded = true;
-  private airRun = 0;
-  private lastAngleSign = 1;
-  private upsideRun = 0;
-  private stuckClock = 0;
-  private stuckX = 0;
+export interface Profile { top: number; ramp: number }
+// Every kind has the same expected finish time (about 15.3 s over 40 m) and
+// overlapping ranges, so the drawing decides: tops calibrated by scripts/tune.ts,
+// checked on a separate pool of drawings by test/balance.test.ts.
+export const PROFILES: Record<Kind, Profile> = {
+  biped: { top: 2.707, ramp: 1.2 },
+  quadruped: { top: 2.736, ramp: 1.8 },
+  centipede: { top: 2.687, ramp: 0.8 },
+  hopper: { top: 2.726, ramp: 1.6 },
+  flyer: { top: 2.77, ramp: 2.6 },
+  roller: { top: 2.8, ramp: 2.4 },
+  worm: { top: 2.722, ramp: 0.6 },
+  jelly: { top: 2.733, ramp: 0.8 },
+  scribble: { top: 2.72, ramp: 1.4 },
+};
 
-  constructor(
-    public world: RAPIER.World,
-    public anatomy: Anatomy,
-    public name: string,
-    public idx: number,
-    public facing: 1 | -1,
-    x: number,
-    groundY: number,
-    public isPlayer = false,
-  ) {
-    const [cx, cy] = anatomy.center;
-    const toLocal = (p: Pt): Pt => [(p[0] - cx) * PX * facing, -(p[1] - cy) * PX];
-    const groups = creatureGroups(idx);
+export interface Stats {
+  size: number;    // metres per pad pixel
+  height: number;  // metres
+  length: number;  // metres
+  quality: number; // 0..1, how well it's drawn for its kind
+  vTarget: number; // m/s it settles at
+  legM: number;    // mean leg length, metres
+}
 
-    const bodyPts = anatomy.body.pts.map(toLocal);
-    const limbPts = anatomy.limbs.map((l) => l.pts.map(toLocal));
-    const all = [...bodyPts, ...limbPts.flat()];
-    const minY = Math.min(...all.map((p) => p[1]));
-    const maxY = Math.max(...all.map((p) => p[1]));
-    this.height = maxY - minY;
+const clamp = (v: number, a: number, b: number) => (v < a ? a : v > b ? b : v);
+// 1 at the ideal, falling to 0 at ±width.
+const near = (v: number, ideal: number, width: number) => clamp(1 - Math.abs(v - ideal) / width, 0, 1);
 
-    const body = world.createRigidBody(
-      RAPIER.RigidBodyDesc.dynamic()
-        .setTranslation(x, groundY - minY + 0.08)
-        .setLinearDamping(0.05)
-        .setAngularDamping(0.6)
-        .setCanSleep(false),
-    );
-    const simple = rdp(bodyPts, 0.015);
-    let made = false;
-    if (anatomy.body.closed && simple.length >= 3) {
-      const hull = RAPIER.ColliderDesc.convexHull(new Float32Array(simple.flat()));
-      if (hull) {
-        world.createCollider(hull.setDensity(1).setFriction(0.7).setRestitution(0.05).setCollisionGroups(groups), body);
-        made = true;
-      }
-    }
-    if (!made) addCapsules(world, body, simple, Math.max(0.04, (anatomy.body.w * PX) / 2), groups, 1, 0.7);
-
-    const strokeLocal = (s: Stroke) => ({ pts: s.pts.map(toLocal), color: s.color, w: s.w * PX });
-    this.body = {
-      rb: body,
-      strokes: [strokeLocal(anatomy.body as Stroke), ...anatomy.decor.map(strokeLocal)],
-    };
-    this.eyes = anatomy.eyes.map((e) => ({ c: toLocal(e.c), r: e.r * PX, px: 0, py: 0, vx: 0, vy: 0 }));
-
-    anatomy.limbs.forEach((limb, i) => {
-      const pts = limbPts[i];
-      const anchor = pts[0];
-      const rel = pts.map((p): Pt => [p[0] - anchor[0], p[1] - anchor[1]]);
-      const bt = body.translation();
-      const rb = world.createRigidBody(
-        RAPIER.RigidBodyDesc.dynamic()
-          .setTranslation(bt.x + anchor[0], bt.y + anchor[1])
-          .setAngularDamping(0.3)
-          .setCanSleep(false),
-      );
-      addCapsules(world, rb, rdp(rel, 0.02), Math.max(0.035, (limb.w * PX) / 2), groups, 1.2, 1.6);
-      const joint = world.createImpulseJoint(
-        RAPIER.JointData.revolute({ x: anchor[0], y: anchor[1] }, { x: 0, y: 0 }),
-        body, rb, true,
-      ) as RAPIER.RevoluteImpulseJoint;
-      this.limbs.push({ rb, joint, strokes: [{ pts: rel, color: limb.color, w: limb.w * PX }] });
-      this.reach = Math.max(this.reach, polyLen(rel));
-    });
-
-    this.mass = body.mass() + this.limbs.reduce((m, l) => m + l.rb.mass(), 0);
-    const torque = 30 * this.mass;
-    for (const l of this.limbs) {
-      l.joint!.configureMotorModel(RAPIER.MotorModel.ForceBased);
-      l.joint!.setMotorMaxForce(torque);
-    }
-    this.stuckX = x;
-  }
-
-  get pos() { return this.body.rb.translation(); }
-  get done() { return this.finishTime !== null || this.eliminatedAt !== null; }
-
-  tap() {
-    if (this.done) return;
-    this.pilot.throttle = Math.min(this.pilot.throttle + 1, 5);
-    this.stats.taps++;
-  }
-
-  press() { if (!this.done) { this.tap(); this.pilot.charge = 0; } }
-
-  // Returns true when the release turned into a leap.
-  release(): boolean {
-    const held = this.pilot.charge;
-    this.pilot.charge = null;
-    if (held === null || held < 0.2 || this.done) return false;
-    if (this.pilot.leapCooldown > 0 || !this.grounded) return false;
-    const c = Math.min(1, (held - 0.2) / 0.7);
-    const m = this.mass;
-    const rb = this.body.rb;
-    rb.applyImpulse({ x: m * (1.2 + 2.2 * c) * this.facing, y: m * (3 + 4.5 * c) }, true);
-    for (const l of this.limbs) l.rb.applyImpulse({ x: 0, y: l.rb.mass() * (3 + 4.5 * c) }, true);
-    this.pilot.leapCooldown = 0.9;
-    return true;
-  }
-
-  step(dt: number, now: number) {
-    const p = this.pilot;
-    p.throttle *= Math.exp(-1.7 * dt);
-    if (p.charge !== null) p.charge += dt;
-    p.leapCooldown = Math.max(0, p.leapCooldown - dt);
-
-    const done = this.done;
-    const spin = done ? 0 : p.throttle;
-    const target = -this.facing * spin * 3.4;
-    const factor = 2 + 10 * Math.min(spin, 1);
-    for (const l of this.limbs) l.joint!.configureMotorVelocity(target, factor);
-
-    // A weak urge to stay upright. Weak enough that flips still happen,
-    // stronger once it has been upside down for a while so nobody stays stuck.
-    const rb = this.body.rb;
-    let a = rb.rotation() % (Math.PI * 2);
-    if (a > Math.PI) a -= Math.PI * 2;
-    if (a < -Math.PI) a += Math.PI * 2;
-    const upside = Math.abs(a) > 2.2;
-    this.upsideRun = upside ? this.upsideRun + dt : 0;
-    const k = this.upsideRun > 1.4 ? 30 : 7;
-    rb.applyTorqueImpulse((-k * a - 1.6 * rb.angvel()) * rb.mass() * dt * 0.6, true);
-
-    const sign = Math.sign(a) || 1;
-    if (Math.abs(a) > 2.6 && sign !== this.lastAngleSign) this.stats.flips++;
-    if (Math.abs(a) > 2.6) this.lastAngleSign = sign;
-    if (upside) {
-      this.stats.upsideTime += dt;
-      this.stats.maxSpeedUpside = Math.max(this.stats.maxSpeedUpside, Math.abs(rb.linvel().x));
-    }
-
-    this.grounded = this.probeGround();
-    if (!this.grounded) {
-      this.airRun += dt;
-      this.stats.airtime += dt;
-      this.stats.bestAir = Math.max(this.stats.bestAir, this.airRun);
-    } else this.airRun = 0;
-
-    // Stuck under a ceiling or wedged in a hurdle: the handler intervenes.
-    if (!done) {
-      this.stuckClock += dt;
-      if (this.stuckClock > 5) {
-        const x = this.pos.x;
-        if ((x - this.stuckX) * this.facing < 0.6) this.nudge(now);
-        this.stuckClock = 0;
-        this.stuckX = this.pos.x;
-      }
-    }
-    this.updateEyes(dt);
-  }
-
-  onNudge: ((c: Creature, now: number) => void) | null = null;
-  nudge(now: number) {
-    const shift = 2.2 * this.facing;
-    for (const part of [this.body, ...this.limbs]) {
-      const t = part.rb.translation();
-      part.rb.setTranslation({ x: t.x + shift, y: t.y + 1.2 }, true);
-      part.rb.setLinvel({ x: 0, y: 0 }, true);
-    }
-    this.stats.nudges++;
-    this.onNudge?.(this, now);
-  }
-
-  private probeGround(): boolean {
-    const t = this.pos;
-    const reach = this.height + 0.35;
-    const ray = new RAPIER.Ray({ x: t.x, y: t.y }, { x: 0, y: -1 });
-    const own = new Set([this.body.rb.handle, ...this.limbs.map((l) => l.rb.handle)]);
-    const hit = this.world.castRay(ray, reach, true, undefined, undefined, undefined, undefined,
-      (col) => !own.has(col.parent()!.handle));
-    return hit !== null;
-  }
-
-  // Render-only spring physics for googly pupils.
-  private lastV = { x: 0, y: 0 };
-  private updateEyes(dt: number) {
-    const v = this.body.rb.linvel();
-    const ax = (v.x - this.lastV.x) / dt, ay = (v.y - this.lastV.y) / dt;
-    this.lastV = { x: v.x, y: v.y };
-    const rot = this.body.rb.rotation();
-    const c = Math.cos(-rot), s = Math.sin(-rot);
-    // gravity and inertia, rotated into the body frame
-    const gx = -ax * 0.02, gy = -9.8 * 0.05 - ay * 0.02;
-    const lx = gx * c - gy * s, ly = gx * s + gy * c;
-    for (const e of this.eyes) {
-      e.vx += (lx - e.px * 60) * dt - e.vx * 4 * dt;
-      e.vy += (ly - e.py * 60) * dt - e.vy * 4 * dt;
-      e.px += e.vx * dt * 8; e.py += e.vy * dt * 8;
-      const m = Math.hypot(e.px, e.py), lim = e.r * 0.45;
-      if (m > lim) { e.px *= lim / m; e.py *= lim / m; e.vx *= -0.4; e.vy *= -0.4; }
-    }
-  }
-
-  freeze() {
-    for (const part of [this.body, ...this.limbs]) part.rb.setBodyType(RAPIER.RigidBodyType.Fixed, false);
+// How well a drawing suits its kind: the proportions that would really help it move.
+export function quality(a: Anatomy): number {
+  const legs = a.parts.filter((p) => p.kind === 'leg').map((p) => bbox(p.pts).h);
+  const meanLeg = legs.length ? legs.reduce((s, h) => s + h, 0) / legs.length : 0;
+  const spread = legs.length > 1 ? Math.sqrt(legs.reduce((s, h) => s + (h - meanLeg) * (h - meanLeg), 0) / legs.length) : 0;
+  const evenness = clamp(1 - spread / Math.max(1, meanLeg) / 0.4, 0, 1);
+  const span = a.parts.filter((p) => p.kind === 'wing').reduce((s, p) => { const b = bbox(p.pts); return s + Math.max(b.w, b.h); }, 0);
+  const bodyB = bbox(a.body.pts);
+  const bodyS = Math.max(bodyB.w, bodyB.h, 1);
+  switch (a.kind) {
+    case 'biped': return 0.6 * near(a.legLen, 0.5, 0.4) + 0.4 * evenness;
+    case 'quadruped': return 0.5 * near(a.legLen, 0.42, 0.35) + 0.5 * evenness;
+    case 'centipede': return 0.4 * clamp((a.legs - 4) / 6, 0, 1) + 0.3 * evenness + 0.3 * near(a.legLen, 0.3, 0.3);
+    case 'hopper': return near(a.legLen, 0.5, 0.4);
+    case 'flyer': return 0.7 * near(span / bodyS, 2.2, 1.8) + 0.3 * clamp(a.wings / 2, 0, 1);
+    case 'roller': return clamp((a.roundness - 0.7) / 0.28, 0, 1);
+    case 'worm': return clamp((a.aspect - 1.9) / 4, 0, 1);
+    case 'jelly': return clamp(1 - a.crossings / 6, 0, 1) * (0.5 + 0.5 * a.roundness);
+    default: return 0.5;
   }
 }
 
-function addCapsules(world: RAPIER.World, rb: RAPIER.RigidBody, pts: Pt[], r: number, groups: number, density: number, friction: number) {
-  if (pts.length === 1) pts = [pts[0], [pts[0][0] + 0.01, pts[0][1]]];
-  for (let i = 1; i < pts.length; i++) {
-    const [ax, ay] = pts[i - 1], [bx, by] = pts[i];
-    const len = Math.hypot(bx - ax, by - ay);
-    if (len < 1e-4) continue;
-    const ang = Math.atan2(by - ay, bx - ax) - Math.PI / 2;
-    world.createCollider(
-      RAPIER.ColliderDesc.capsule(len / 2, r)
-        .setTranslation((ax + bx) / 2, (ay + by) / 2)
-        .setRotation(ang)
-        .setDensity(density)
-        .setFriction(friction)
-        .setRestitution(0.05)
-        .setCollisionGroups(groups),
-      rb,
-    );
-  }
+export function stats(a: Anatomy): Stats {
+  const M = Math.max(a.box.w, a.box.h, 24);
+  // Every drawing becomes a creature about a metre across, whatever its size
+  // on the pad, so a doodle in the corner races a page-filler on equal terms.
+  const size = 1 / M;
+  const height = a.box.h * size, length = a.box.w * size;
+  const q = quality(a);
+  const vTarget = PROFILES[a.kind].top * (0.95 + 0.1 * q);
+  return { size, height, length, quality: q, vTarget, legM: a.legLen * height };
 }

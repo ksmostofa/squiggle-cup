@@ -10,7 +10,6 @@
 | **Platform** | Web (installable PWA), portrait phone first, desktop supported |
 | **Cost target** | Free tiers only. The one optional expense is a domain, about $10 a year. |
 | **Primary growth channel** | X (Twitter), then Reddit, TikTok, itch.io and web game portals |
-| **Right now** | Entered in the trmi × Lovhack × Nexus Hackathon 2026 ("Multiplayer Everything"). Submit on Devpost by **Mon Nov 2, 5:00 AM JST**. Section 28 is the only scope that matters until then. |
 
 ---
 
@@ -42,7 +41,6 @@
 25. Risks and mitigations
 26. Open questions and later experiments
 27. Appendix: research data and sources
-28. Hackathon build (trmi × Lovhack × Nexus 2026)
 
 ---
 
@@ -860,75 +858,3 @@ reports(id TEXT PK, creature_id TEXT, reporter TEXT, reason TEXT, created INT)
 - Horse Race Tests: https://knowyourmeme.com/memes/subcultures/horse-race-tests
 - Doodle Shooter story: https://x.com/PirateWires/status/2100157223313838428
 - Raw research files: `~/Documents/Last30Days/draw-your-own-creature-games-going-viral-*-raw-v3*.md`
-
----
-
-## 28. Hackathon build (trmi × Lovhack × Nexus 2026)
-This section overrides the rest of the PRD until submission. Everything not listed here waits until after the hackathon.
-
-### 28.1 Event facts
-- **Theme:** "Multiplayer Everything": people must be able to use it together.
-- **Team:** 3 students (2–4 allowed). Late entry approved. One captain submits.
-- **Required tool:** trmi (trmi.dev). One shared trmi project linked to our GitHub repo. Each teammate sends Claude Code prompts from their own seat, and teammates review, approve and test each other's changes there. Judges score how much we really collaborated through trmi, so **do the work in trmi, not alone in a local terminal**.
-- **Originality:** coding started after kickoff (Oct 31, 10 PM JST). The research and PRD are "ideas and sketches", which are allowed. Libraries, templates and AI agents are allowed.
-- **Deadline:** Devpost says **Mon Nov 2, 5:00 AM JST** (trmi says 6:00 AM; trust the earlier one). Aim to submit by **4:30 AM JST**.
-- **Judging:** Creativity & Innovation, Technical Execution, TRMI & Team Collaboration, Real-World Impact, Demo & Presentation (no published weights).
-- **Submit:** Devpost entry (name, description), public GitHub repo URL, short demo video, links and team info, public playable URL (strongly recommended), and an explanation of how we used trmi (recommended).
-- **Links:** https://trmi.dev/hackathon · https://lovhack-trmi-2026.devpost.com · rules: https://lovhack-trmi-2026.devpost.com/rules · Discord (deadline questions): https://discord.gg/qCmA6fFS2
-
-### 28.2 The one thing we ship
-**A live room where 2–4 friends draw creatures at the same time, watch them wake up together, and race them on one Best in Show course from their own phones or laptops.**
-
-Demo story (what the video shows):
-1. Player 1 creates a room and reads out the 4-letter code. Players 2 and 3 join from other devices.
-2. A 20 s draw phase runs for everyone at once, with the same ink for all.
-3. All creatures are revealed together, then: countdown, race, shoving, a creature stuck in the tunnel, a handler nudge.
-4. Results: placings, one award per creature, and the "shape is physics" fact ("Winner's legs: 2.1× longer").
-5. Rematch with one tap. Someone redraws a better shape and wins, which shows that the game rewards design skill.
-
-### 28.3 Scope
-| In | Cut (back to the main PRD after the hackathon) |
-|---|---|
-| Draw pad with ink meter (6.1), drawing analysis (6.3, done), physics creature (7.1–7.4, done) | Live drawing feedback 6.2, dare links, compact encoding |
-| Best in Show course: flat ground, hurdles, seesaw, tunnel, finish. Weave poles if time allows | Handler and leash, judges, other four venues |
-| Tap to stride, hold and release to leap (8) | Ghost replays, leaderboards, ranked play, Daily Cup, Graft |
-| Race flow: countdown, finish, nudge, end rules, ranking (9.1) | Replay clips, share cards, PWA |
-| Results: podium, one award each, one comparison fact, Rematch / Redraw (9.2, simplified) | PixiJS, Svelte, audio beyond a few Web Audio blips |
-| Rooms of 2–4 by 4-letter code; empty seats can be filled with bots (11.1 bot pilot) | Cross-browser determinism (not needed with the host model below) |
-| Canvas 2D renderer with googly eyes; works on a phone | Accounts, moderation, analytics |
-
-### 28.4 Multiplayer design (replaces section 12 for the hackathon)
-Lockstep needs cross-browser determinism we don't have yet (see the open items in prd/progress.json), so we use a **host-authoritative** model instead:
-- **Relay server:** a tiny WebSocket relay, one room per 4-letter code. It only forwards messages and assigns slots. Built as a Cloudflare Worker + Durable Object in `server/` (free plan), deployed with `wrangler`. Static client on Cloudflare Pages. Fallback if Cloudflare setup blocks us: the same relay as a Node `ws` server on any free host.
-- **Host:** the room creator's browser runs the only Rapier simulation and sends snapshots `{tick, bodies:[x,y,angle]...}` at 20 Hz. Guests interpolate between snapshots.
-- **Guests:** send their drawing once (simplified points, a few hundred bytes of JSON), then only inputs `{type: tap|press|release}`. They play their own sound and squash effects locally the moment they press.
-- **Messages:** `join{name}`, `hello{slot, players}`, `lobby{players}`, `phase{draw|reveal|race|results, endsAt}`, `drawing{points}`, `input{type}`, `snap{tick, bodies}`, `results{ranking, awards, facts}`, `rematch`.
-- **Disconnects:** a guest's creature keeps running, driven by the bot pilot. If the host leaves, the room ends with a "host left" screen (acceptable for the demo).
-
-### 28.5 Team split (3 people, all in trmi)
-| Seat | Owns | First prompts |
-|---|---|---|
-| A: Simulation | `src/race.ts`, `src/course.ts`, `src/bots.ts` | Race loop, Best in Show course, ranking, headless test of a full race |
-| B: Play screens | `index.html`, `src/main.ts`, `src/render.ts`, `src/ui/*` | Draw pad + ink meter, Canvas 2D renderer, lobby / draw / race / results screens |
-| C: Rooms + ship | `server/`, `src/net.ts`, deploy, Devpost | Relay, room join by code, host snapshots, deploy to Pages, demo video, Devpost write-up |
-
-Rules: each seat works in its own trmi **lane** (one branch per feature). Teammates approve the agent's edit cards in trmi (approval mode: Majority or Everyone, never Auto on main). A finished lane opens a PR into trmi's main; the captain merges trmi's main into the GitHub default branch before deploys. Use trmi's main session only for planning and small edits everyone needs right away. Watch trmi's overlap warnings when two lanes touch the same file. Each seat writes a one-line handoff in prd/progress.json when a feature changes status. Keep a few screenshots of trmi reviews for the Devpost collaboration section.
-
-### 28.6 Timeline (JST, Nov 1–2)
-| Time | Goal |
-|---|---|
-| 19:30–20:00 | Repo on GitHub, shared trmi project, everyone can prompt. `npm run dev` shows a page |
-| 20:00–23:30 | Seats A/B/C build in parallel. Solo race against bots works locally by 23:30 |
-| 23:30–01:00 | Integrate rooms. Three devices in one room finish a race online |
-| 01:00–02:30 | Three-player playtests, fix what breaks, tuning, polish results screen |
-| 02:30–03:30 | Record the demo video (three real players, 2–3 min) |
-| 03:30–04:30 | Devpost entry, README, trmi collaboration write-up. **Submit** |
-| 04:30–05:00 | Buffer only. No new features |
-
-Feature freeze at 02:30 no matter what. A working single course beats unfinished extras.
-
-### 28.7 Definition of done
-- A public URL where 3 people on different networks can join one room, draw, race and see results.
-- Rematch works at least 3 times in a row without reloading.
-- Phone portrait and desktop both playable.
-- Public GitHub repo with README, demo video uploaded, Devpost submitted before 5:00 AM JST.

@@ -1,0 +1,12 @@
+# Room relay. The game uses wrangler.site.toml; `npm run deploy` ships both.
+name = "squiggle-cup-relay"
+main = "worker/index.mjs"
+compatibility_date = "2026-06-01"
+
+[[durable_objects.bindings]]
+name = "LOBBY"
+class_name = "Lobby"
+
+[[migrations]]
+tag = "v1"
+new_sqlite_classes = ["Lobby"]

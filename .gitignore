@@ -2,5 +2,8 @@ node_modules
 dist
 prd/index.html
 prd/.snapshot.json
-.claude/worktrees
+.wrangler/
+.claude/worktrees/
 .claude/settings.local.json
+test-results/
+playwright-report/

@@ -1,43 +1,41 @@
 # Squiggle Cup
 
-**Draw anything. It comes alive and races your friends. Badly.**
+Draw it. Race it. Up to five players draw creatures, then race them across a white architectural sheet. Legs trot, wings flap and snakes slither. The shape decides the motion; the same drawing runs the same time.
 
-A multiplayer physics party game for 2–4 players. Everyone in a room draws a creature at the same time, then all of them wake up and race the same agility course. There are no hidden stats: the shape you draw *is* the physics. Long legs stride, round blobs roll, top-heavy towers fall over in the tunnel. Rematch, redraw a better shape and win.
+**Play:** https://squiggle-cup.ksmostofa576.workers.dev/
 
-Built for the **trmi × Lovhack × Nexus Hackathon 2026**, theme *Multiplayer Everything*.
+Create a room and share its four-letter code, or play solo against the house creatures. Choose a 20, 30 or 60 second drawing timer, draw and watch the live preview, then press Race. Empty lanes get house creatures. The results offer rematch, redraw, a replay link, a 1080×1350 result card and a drawing PNG with a solid white background.
 
-- **Play:** _TBD (public URL)_
-- **Demo video:** _TBD_
-- **Devpost:** https://lovhack-trmi-2026.devpost.com
+## Development
 
-## How to play
-1. One player creates a room and shares the 4-letter code.
-2. Everyone draws a creature in 20 seconds with the same amount of ink.
-3. The creatures are revealed together and race: tap to stride, hold and release to leap.
-4. See the placings, everyone's award, and what the winner's shape did better. Rematch.
-
-## How it works
-- **Drawing → body.** Strokes are simplified and analysed (body, legs, symmetry, scribble) in `src/analyze.ts`, then built into a Rapier 2D physics body with motorised limbs in `src/creature.ts`.
-- **Rooms.** A small WebSocket relay (one room per code) forwards messages. The host's browser runs the simulation and streams snapshots at 20 Hz; guests send only their drawing and their taps. See PRD §28.4.
-- **Stack.** TypeScript, Vite, `@dimforge/rapier2d-deterministic-compat`, `perfect-freehand`, Canvas 2D, Cloudflare Workers + Durable Objects (relay) and Pages (hosting).
-
-## Run locally
 ```bash
-npm install
+npm ci
 npm run dev
+npm test
+npm run build
 ```
 
-## Built with trmi
-We built this as a team of three in one shared trmi project, each sending Claude Code prompts from our own seat and reviewing each other's changes before they merged.
+Vite includes the WebSocket relay at `/relay` for both dev and preview. The relay forwards drawings and a seed; each browser runs the deterministic simulation. Rhythm input is currently disabled.
 
-| Seat | Owned |
-|---|---|
-| A: Simulation | race loop, course, bots |
-| B: Play screens | draw pad, renderer, screens |
-| C: Rooms + ship | relay server, netcode, deployment |
+```bash
+npx playwright install chromium
+npm run test:browser
+```
 
-_Add before submitting: how reviews in trmi caught bugs, a couple of screenshots, and what each person prompted._
+To use an installed Chromium, set `PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH=/usr/bin/chromium`. To test the deployment, also set `PLAYTEST_URL=https://squiggle-cup.ksmostofa576.workers.dev`. The browser suite uses three isolated sessions and real pointer input, checks matching results through three rematches, downloads both PNGs and checks host handoff. It does not record video.
 
-## Project docs
-- `PRD.md`: full design. §28 is the hackathon scope.
-- `prd/progress.json`: feature status and handoff (`npm run prd` renders `prd/index.html`).
+## Deployment
+
+```bash
+npx wrangler login
+npm run deploy
+```
+
+The deploy script ships the relay using `wrangler.toml`, builds the game with its live WebSocket URL, and ships the game using `wrangler.site.toml`. It then checks that the public URL serves the game document. Both services use Workers; `squiggle-cup.pages.dev` is not the game URL.
+
+- Game: https://squiggle-cup.ksmostofa576.workers.dev/
+- Relay: wss://squiggle-cup-relay.ksmostofa576.workers.dev/relay
+- Preview image: `public/og.png` (1200×630)
+- Handoff: `prd/progress.json`; `npm run prd` rebuilds the progress page.
+
+The historic PRD includes earlier designs. The handoff describes the current build. Demo and OG videos are omitted at the user's request.

@@ -1,6 +1,21 @@
 export type Pt = [number, number];
 
-export const dist = (a: Pt, b: Pt) => Math.hypot(a[0] - b[0], a[1] - b[1]);
+// The simulation sticks to + - * / and sqrt, which are exact in every browser
+// (PRD §7). Math.hypot, Math.atan2 and friends can differ in the last bit.
+export const hypot = (x: number, y: number) => Math.sqrt(x * x + y * y);
+export const dist = (a: Pt, b: Pt) => hypot(a[0] - b[0], a[1] - b[1]);
+
+// atan2 from a minimax polynomial (max error ~1e-5 rad), no trig calls.
+export function atan2(y: number, x: number): number {
+  const ax = Math.abs(x), ay = Math.abs(y);
+  if (ax === 0 && ay === 0) return 0;
+  const a = Math.min(ax, ay) / Math.max(ax, ay);
+  const s = a * a;
+  let r = ((-0.0464964749 * s + 0.15931422) * s - 0.327622764) * s * a + a;
+  if (ay > ax) r = 1.5707963267948966 - r;
+  if (x < 0) r = 3.141592653589793 - r;
+  return y < 0 ? -r : r;
+}
 
 export function polyLen(p: Pt[]): number {
   let l = 0;
@@ -32,7 +47,7 @@ export function distToSeg(p: Pt, a: Pt, b: Pt): number {
   if (l2 < 1e-9) return dist(p, a);
   let t = ((p[0] - a[0]) * dx + (p[1] - a[1]) * dy) / l2;
   t = Math.max(0, Math.min(1, t));
-  return Math.hypot(p[0] - (a[0] + t * dx), p[1] - (a[1] + t * dy));
+  return hypot(p[0] - (a[0] + t * dx), p[1] - (a[1] + t * dy));
 }
 
 export function distToPolyline(p: Pt, poly: Pt[], closed: boolean): number {
