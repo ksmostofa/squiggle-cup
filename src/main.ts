@@ -579,6 +579,28 @@ function keep(strokes: Stroke[], name: string) {
   store.set(KEPT, JSON.stringify([{ id, code: codeOf(strokes, name), at: Date.now() }, ...kept().filter((k) => k.id !== id)].slice(0, KEEP_MAX)));
 }
 
+// Leaderboard entries posted under your player name (from another device, the
+// other site, or before My creatures existed) join the list too.
+async function adoptPosted(): Promise<boolean> {
+  const mine = store.get('sc:name');
+  if (!mine) return false;
+  try {
+    // Each entry is brought in once, so removing it here sticks.
+    const seen = new Set(store.get('sc:adopted').split(' ').filter(Boolean));
+    let added = false;
+    for (const e of (await board()).entries) {
+      if (e.creator !== mine || seen.has(e.id)) continue;
+      seen.add(e.id);
+      const d = fromCode(e.code);
+      if (!d || kept().some((k) => k.id === codeOf(d.strokes, ''))) continue;
+      keep(d.strokes, e.creature);
+      added = true;
+    }
+    store.set('sc:adopted', [...seen].join(' '));
+    return added;
+  } catch { return false; }
+}
+
 function stable() {
   const el = screen('board stable', `${masthead('MY CREATURES')}
     <section class="board-head">
@@ -611,6 +633,7 @@ function stable() {
     });
     rows.appendChild(li);
   }
+  adoptPosted().then((added) => { if (added && el.isConnected) stable(); });
 }
 
 // ---------- Leaderboard ----------
