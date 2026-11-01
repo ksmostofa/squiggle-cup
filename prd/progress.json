@@ -1,17 +1,20 @@
 {
   "handoff": {
     "updated": "2026-11-02",
-    "summary": "Live at https://squiggle-cup.ksmostofa576.workers.dev/. Current direction: the white architectural sheet, a straight 40 m race in five lanes; drawings decide movement, no race controls or luck. Fixed the game URL serving relay text by deploying static assets through a separate game Worker config. npm run deploy now checks the game HTML. Drawing PNGs have an opaque white background; result cards remain 1080x1350. Logo displayed and 1200x630 OG still added. Fixed host handoff on results, guest-only control visibility, stale screen refresh callbacks, and departed entrants appearing in rematches. npm test, npm run build and all three Playwright checks pass locally and against the live URL: three isolated browsers draw distinct creatures, agree on results, run three identical-time rematches, download PNGs, and finish another race after the host leaves. No demo or OG video created, per user request.",
+    "summary": "Live on Workers (https://squiggle-cup.ksmostofa576.workers.dev/) and Cloudflare Pages (https://squigglecup.pages.dev/, classic Pages, same relay and leaderboard). This pass: preview runs the real Race engine (Codex); one stable creature scale for every racer and frame (flight drawn at 0.12 of true altitude, reach budgets checked by test/sim.test.ts); flat top-down sheet (no perspective); desktop standings in a side panel; scoring = movement form + craftsmanship (src/score.ts) with a shared 14.60 s ceiling for every kind (scripts/tune.ts, test/balance.test.ts); ten curated house families (src/templates.ts) dealt per game seed, kept on rematch/redraw, calibrated against test/beginners.ts; global leaderboard (server/board.ts, Board Durable Object on the game Worker) that re-races every post; rules r2, season s1. Vehicles (wheels, cars, jets, rockets) deferred to a separate mode: wheel physics is in body.ts, detection is off (analyze.ts WHEELS). Verified: npm test, layout/motion browser checks at 4 sizes, three-client room test passing on both live URLs, live leaderboard time matches local (14789 ms).",
     "next": [
+      "In progress: much stricter scoring (line quality, tighter proportions, more detail kinds) so only skilled drawings near the ceiling; bump RULES to r3 and recalibrate the house.",
+      "In progress: 1v1 challenge any leaderboard entry, with repeated rematches.",
+      "Vehicle mode: wheels, cars, helicopters, jets, rockets, missiles (wheel physics already in src/body.ts).",
+      "Owner: decide whether to delete the stray Worker 'squigglecup' (squigglecup.ksmostofa576.workers.dev) that wrangler created during Pages setup; deletion needs owner approval.",
       "Owner: run a three-person playtest on different devices/networks; automation used three isolated Chromium contexts on one machine",
-      "Owner: complete Devpost submission and trmi write-up; demo and OG videos were explicitly excluded",
       "Later: check Firefox/WebKit determinism and native phone share sheets"
     ],
     "open": [
+      "Leaderboard has one deploy-check entry ('Deploy check' by Squiggle Cup); it goes away with the r3 rules bump.",
       "Three contexts on one machine do not replace a three-person, different-network playtest",
       "Cross-browser/device determinism and native phone share-sheet behavior have not been verified",
-      "Historic PRD sections and later milestones describe superseded concepts; current scope is the straight white-sheet race",
-      "Devpost submission and trmi write-up remain with the project owner; no demo or OG video requested"
+      "Historic PRD sections and later milestones describe superseded concepts; current scope is the straight white-sheet race"
     ]
   },
   "statuses": {
@@ -146,7 +149,7 @@
           "title": "Live drawing feedback",
           "section": "6.2",
           "status": "verified",
-          "note": "Same creature physics run in the preview strip; kind and form update after each stroke."
+          "note": "RacePreview runs the actual Race; 28 drawings match tick-for-tick. Draw screen shows SCORE, MOVE, CRAFT and a next-step tip."
         },
         {
           "title": "Reading the drawing",
@@ -474,7 +477,8 @@
         {
           "title": "Responsive layout and camera",
           "section": "20.2",
-          "status": "planned"
+          "status": "verified",
+          "note": "One stable scale per canvas size; flat sheet; reserved name/number/time slots; desktop and short-landscape side panel. Pixel collision checks pass at 320x568, 375x812, 1280x900, 812x375."
         },
         {
           "title": "Speed budgets",

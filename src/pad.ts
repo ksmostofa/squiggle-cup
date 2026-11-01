@@ -1,11 +1,12 @@
 import { type Anatomy, type Stroke, analyze } from './analyze';
 import { sfx, unlock } from './audio';
-import { Body } from './body';
-import { INKS, INK_NAMES, flatCourse } from './course';
-import { DT, KINDS, stats } from './creature';
+import { INKS, INK_NAMES } from './course';
+import { KINDS, stats } from './creature';
+import { FEATURES, type Feature, type Score } from './score';
+import { canonical, THICK, THIN } from './drawing';
 import { type Pt, dist } from './geom';
 import { strokePath } from './ink';
-import { SUBSTEPS, pace } from './race';
+import { RacePreview } from './preview';
 import { FAINT, INK, LINE, MONO, PAPER, SANS, TEXT, drawPreview } from './render';
 
 // The drawing sheet. You draw straight onto the same white sheet the race
@@ -17,7 +18,6 @@ export const PAD = 600;
 export const DRAW_TIMES = [20, 30, 60]; // Quick, Normal, Careful: seconds from the first stroke
 export const DRAW_TIME = 30;
 const mmss = (s: number) => `${String(Math.floor(s / 60)).padStart(2, '0')}:${String(s % 60).padStart(2, '0')}`;
-export const THIN = 6, THICK = 11;
 
 export interface PadResult { strokes: Stroke[]; anatomy: Anatomy; name: string }
 export interface PadOptions { initial?: Stroke[]; name?: string; title?: string; action?: string; time?: number }
@@ -42,8 +42,7 @@ export class Pad {
   private startedAt: number | null = null;
   private time: number;
   private submitted = false;
-  private live: { body: Body; anatomy: Anatomy; size: number; t: number; acc: number } | null = null;
-  private course = flatCourse(1e9);
+  private live: RacePreview | null = null;
   private camX = 0;
   private last = 0;
 
@@ -153,19 +152,16 @@ export class Pad {
 
   // Re-read the drawing and bring the new version to life in the strip below.
   private changed() {
-    const a = (this.anatomy = analyze(this.strokes));
+    const a = (this.anatomy = analyze(canonical(this.strokes)));
     if (!this.strokes.length) this.readout.innerHTML = '<span class="kind muted">Waiting for ink</span>';
     else if (!a) this.readout.innerHTML = '<span class="kind muted">Draw a body</span>';
     else {
       const k = KINDS[a.kind], s = stats(a);
-      const q = Math.round(s.quality * 100);
-      this.readout.innerHTML = `<span class="kind">${k.label} — ${k.verb}</span><span class="form mono" title="How well its proportions suit its kind">FORM ${String(q).padStart(2, '0')}</span><p class="blurb">${k.blurb}</p>`;
+      const sc = s.score, pc = (v: number) => String(Math.round(v * 100)).padStart(2, '0');
+      this.readout.innerHTML = `<span class="kind">${k.label} — ${k.verb}</span><span class="form mono" title="Score: movement design and craftsmanship. A higher score runs faster.">SCORE ${pc(sc.total)}</span><p class="blurb">${k.blurb}</p><p class="split mono"><span title="Proportions that help it move">MOVE ${pc(sc.form)}</span><span title="A joined-up creature with a face and details">CRAFT ${pc(sc.craft)}</span><span class="tip">${hint(sc)}</span></p>`;
     }
     if (a) {
-      const s = stats(a);
-      const body = new Body(a, s.size, { kind: a.kind, vTarget: s.vTarget });
-      body.place(0, this.course);
-      this.live = { body, anatomy: a, size: s.size, t: -0.6, acc: 0 };
+      this.live = new RacePreview(a);
       this.camX = 0;
     } else this.live = null;
   }
@@ -261,16 +257,21 @@ export class Pad {
     if (c.width !== w || c.height !== h) { c.width = w; c.height = h; }
     const live = this.live;
     if (live) {
-      live.acc += dt;
-      while (live.acc >= DT) {
-        live.acc -= DT;
-        const mult = live.t < 0 ? 0 : pace(live.anatomy.kind, live.t);
-        for (let i = 0; i < SUBSTEPS; i++) live.body.step(DT / SUBSTEPS, this.course, mult);
-        live.t += DT;
-      }
-      if (live.body.x > 14) { live.body = new Body(live.anatomy, live.size, { kind: live.anatomy.kind, vTarget: stats(live.anatomy).vTarget }); live.body.place(0, this.course); live.t = -0.6; this.camX = 0; }
-      this.camX += (live.body.x - this.camX) * Math.min(1, dt * 4);
+      if (live.advance(dt)) this.camX = 0;
+      this.camX += (live.race.playerRacer!.x - this.camX) * Math.min(1, dt * 4);
     }
-    drawPreview(ctx, w, h, live ? { body: live.body, anatomy: live.anatomy, size: live.size, t: performance.now() / 1000 } : null, this.camX, dpr);
+    const racer = live?.race.playerRacer;
+    drawPreview(ctx, w, h, racer ? { body: racer.body, anatomy: racer.anatomy, size: racer.s.size, t: live!.race.time } : null, racer?.restY ?? 0, this.camX, dpr);
   }
+}
+
+// The single most useful next step for a better (faster) drawing.
+function hint(sc: Score): string {
+  if (sc.cohesion < 0.7) return 'Join the loose bits to the body.';
+  if (!sc.face.eyes) return 'Give it eyes.';
+  if (!sc.face.forward) return 'Face it the way it runs →';
+  if (!sc.face.mouth) return 'Add a mouth.';
+  const next = (['head', 'tail', 'crest', 'markings'] as Feature[]).find((f) => !sc.features.includes(f));
+  if (next) return `Try adding ${FEATURES[next]}.`;
+  return sc.form < 0.8 ? 'Tune its proportions for its kind.' : 'Beautifully made.';
 }

@@ -4,15 +4,17 @@ import { isMuted, setMuted, sfx, unlock } from './audio';
 import { rivalDrawing } from './bots';
 import { INKS, LANES } from './course';
 import { DT, KINDS } from './creature';
-import { type Dare, decode, encode } from './encode';
+import { canonical, codeOf, fromCode } from './drawing';
 import { thumb } from './ink';
+import { board, postToBoard } from './board';
 import { card, drawingPng, save } from './card';
 import { type Cast, type Entrant, Room } from './net';
 import { PLACINGS, fact, formalName } from './names';
-import { DRAW_TIME, DRAW_TIMES, Pad, type PadResult, THICK, THIN } from './pad';
+import { DRAW_TIME, DRAW_TIMES, Pad, type PadResult } from './pad';
 import { Race, type Racer } from './race';
 import { Renderer } from './render';
 import { mulberry32 } from './rng';
+import { FAMILIES, FAMILY_NAMES, lineup, template } from './templates';
 
 // Flow: home → (room lobby) → everyone draws at once → the race runs itself,
 // players tap to their creature's beat → results → rematch / redraw / share.
@@ -32,32 +34,26 @@ const store = {
 
 interface Contender { id: string; name: string; strokes: Stroke[]; anatomy: Anatomy; bot?: boolean }
 
-const pack = (strokes: Stroke[]): Dare['strokes'] => strokes.map((s) => ({ pts: s.pts, ink: Math.max(0, INKS.indexOf(s.color)), thick: s.w > (THIN + THICK) / 2 }));
-const unpack = (ps: Dare['strokes']): Stroke[] => ps.map((s) => ({ pts: s.pts, color: INKS[s.ink] ?? INKS[0], w: s.thick ? THICK : THIN }));
-const codeOf = (strokes: Stroke[], name: string) => encode({ venue: 0, seed: 0, name, strokes: pack(strokes) });
-function fromCode(code: string): { strokes: Stroke[]; anatomy: Anatomy; name: string } | null {
-  const d = decode(code);
-  if (!d) return null;
-  const strokes = unpack(d.strokes);
-  const anatomy = analyze(strokes);
-  return anatomy ? { strokes, anatomy, name: d.name } : null;
+// The house creatures fill empty lanes: four curated families dealt by the
+// game's seed (src/templates.ts). A new game deals a new lineup; Rematch and
+// Redraw keep it. Every device deals the same lineup from the same seed.
+const houses = new Map<number, Contender[]>();
+function house(seed: number): Contender[] {
+  let cs = houses.get(seed);
+  if (!cs) {
+    const rng = mulberry32(seed ^ 0x5c0);
+    cs = lineup(seed).map((t, i) => { const strokes = canonical(t.strokes); const a = analyze(strokes)!; return { id: `bot${i}`, name: formalName(a, rng), strokes, anatomy: a, bot: true }; });
+    houses.set(seed, cs);
+  }
+  return cs;
 }
-// The exact strokes every other device will see.
-const canonical = (strokes: Stroke[]) => unpack(decode(codeOf(strokes, ''))!.strokes);
-
-// The house creatures fill empty lanes: always the same four, so they run
-// the same times every race and work as par for the course.
-const HOUSE: Contender[] = (['quadruped', 'flyer', 'worm', 'roller'] as Kind[]).flatMap((kind, i) => {
-  const rng = mulberry32(0x5c0 + i * 977);
-  const strokes = canonical(rivalDrawing(rng, INKS, kind));
-  const a = analyze(strokes);
-  return a ? [{ id: `bot${i}`, name: formalName(a, rng), strokes, anatomy: a, bot: true }] : [];
-});
-const field = (people: Contender[], _seed = 0): Contender[] => [...people.slice(0, LANES), ...HOUSE].slice(0, LANES);
+const field = (people: Contender[], seed: number): Contender[] => [...people.slice(0, LANES), ...house(seed)].slice(0, LANES);
 const entriesOf = (cs: Contender[], focus: string, taps?: Map<string, number[]>) =>
   cs.map((c) => ({ anatomy: c.anatomy, name: c.name, kind: c.id === focus ? 'player' as const : 'rival' as const, id: c.id, bot: c.bot, taps: taps?.get(c.id) }));
 
 const newSeed = () => (Math.random() * 2 ** 32) >>> 0;
+// This game's seed: it deals the house lineup and carries over to rematches.
+let game = newSeed();
 
 // ---------- State ----------
 
@@ -133,13 +129,15 @@ function home(error = '') {
         <button class="btn">Join</button>
       </form>
       <p class="error" role="alert">${esc(error)}</p>
+      <button class="linkish mono to-board">Leaderboard →</button>
     </section>
     <footer class="foot mono"><span>DWG 01</span><span>NO LUCK</span><span>40 000 MM</span></footer>`);
   wire(el);
   wireTime(el);
   const nameIn = el.querySelector<HTMLInputElement>('.pname')!;
   const name = () => { const n = nameIn.value.trim().slice(0, 22); store.set('sc:name', n); return n; };
-  el.querySelector('.solo')!.addEventListener('click', () => { unlock(); sfx.click(); name(); drawScreen({ kind: 'solo' }); });
+  el.querySelector('.solo')!.addEventListener('click', () => { unlock(); sfx.click(); name(); game = newSeed(); drawScreen({ kind: 'solo' }); });
+  el.querySelector('.to-board')!.addEventListener('click', () => { sfx.click(); leaderboard(); });
   el.querySelector('.create')!.addEventListener('click', () => { unlock(); sfx.click(); connect(name()); });
   el.querySelector<HTMLFormElement>('.join')!.addEventListener('submit', (e) => {
     e.preventDefault(); unlock();
@@ -199,7 +197,7 @@ function lobby() {
     el.querySelector('.wait')!.textContent = r.isHost ? '' : 'Host starts';
   };
   refresh();
-  el.querySelector('.start')!.addEventListener('click', () => { sfx.click(); r.cast({ k: 'draw', round: round + 1, time: drawTime }); });
+  el.querySelector('.start')!.addEventListener('click', () => { sfx.click(); r.cast({ k: 'draw', round: round + 1, time: drawTime, lineup: newSeed() }); });
   el.querySelector('.invite')!.addEventListener('click', async () => {
     const link = `${location.origin}${location.pathname}#room=${r.code}`;
     try { await navigator.clipboard.writeText(link); el.querySelector('.toast')!.textContent = 'Invite link copied.'; }
@@ -215,6 +213,7 @@ function onCast(from: string, c: Cast) {
     sent.clear();
     started = -1;
     if (c.time) drawTime = c.time;
+    if (c.lineup !== undefined) game = c.lineup;
     hostDeadline = performance.now() + (drawTime + 20) * 1000;
     drawScreen({ kind: 'room', room: r }, me?.strokes);
   } else if (c.k === 'drawing') {
@@ -225,6 +224,7 @@ function onCast(from: string, c: Cast) {
   } else if (c.k === 'race') {
     round = c.round;
     started = c.round;
+    game = c.seed;
     const people = c.entrants.map((e) => { const d = fromCode(e.code); return d ? { id: e.id, name: e.name || d.name, strokes: d.strokes, anatomy: d.anatomy } : null; })
       .filter((x): x is Contender => !!x);
     runRace(field(people, c.seed), c.seed, r.id, { kind: 'room', room: r }, c.entrants);
@@ -244,7 +244,7 @@ function hostCheck() {
   if (!all && performance.now() < hostDeadline) return;
   const entrants: Entrant[] = r.players.filter((p) => sent.has(p.id)).map((p) => ({ id: p.id, name: sent.get(p.id)!.name || p.name, code: sent.get(p.id)!.code }));
   started = round;
-  r.cast({ k: 'race', round, seed: newSeed(), entrants });
+  r.cast({ k: 'race', round, seed: game, entrants });
 }
 setInterval(() => { if (room?.isHost && sent.size && started !== round && performance.now() >= hostDeadline) hostCheck(); }, 1000);
 
@@ -281,11 +281,9 @@ function submit(mode: Mode, r: PadResult, el: HTMLElement) {
   }
   const mine: Contender = { id: 'me', name, strokes, anatomy: analyze(strokes)! };
   if (mode.kind === 'replay') {
-    const seed = newSeed();
-    runRace(field([mine, ...mode.people.slice(0, LANES - 1)], seed), seed, 'me', { kind: 'solo' });
+    runRace(field([mine, ...mode.people.slice(0, LANES - 1)], game), game, 'me', { kind: 'solo' });
   } else {
-    const seed = newSeed();
-    runRace(field([mine], seed), seed, 'me', mode);
+    runRace(field([mine], game), game, 'me', mode);
   }
 }
 
@@ -434,7 +432,7 @@ function results(race: Race, seed: number, cs: Contender[], mode: Mode, entrants
       <button class="btn ghost share">Share race</button>
       <button class="btn ghost save-card">Save card</button>
     </div>
-    <button class="linkish mono save-drawing">Save drawing</button>
+    <div class="links">${watching ? '' : '<button class="linkish mono post">Post to leaderboard</button>'}<button class="linkish mono save-drawing">Save drawing</button></div>
     <p class="toast" role="status"></p>`);
   wire(el);
   if (mode.kind === 'room') {
@@ -453,14 +451,14 @@ function results(race: Race, seed: number, cs: Contender[], mode: Mode, entrants
   el.querySelector('.again')?.addEventListener('click', () => {
     sfx.click();
     if (mode.kind === 'room') {
-      if (mode.room.isHost && entrants) mode.room.cast({ k: 'race', round: round + 1, seed: newSeed(), entrants: entrants.filter((e) => mode.room.players.some((p) => p.id === e.id)) });
+      if (mode.room.isHost && entrants) mode.room.cast({ k: 'race', round: round + 1, seed, entrants: entrants.filter((e) => mode.room.players.some((p) => p.id === e.id)) });
     }
     else if (mode.kind === 'replay') runRace(cs, seed, mode.sharer, mode, undefined, 0, taps);
-    else { const s = newSeed(); runRace(field(people, s), s, 'me', mode); }
+    else runRace(field(people, seed), seed, 'me', mode);
   });
   el.querySelector('.redraw')?.addEventListener('click', () => {
     sfx.click();
-    if (mode.kind === 'room') { if (mode.room.isHost) mode.room.cast({ k: 'draw', round: round + 1, time: drawTime }); }
+    if (mode.kind === 'room') { if (mode.room.isHost) mode.room.cast({ k: 'draw', round: round + 1, time: drawTime, lineup: seed }); }
     else drawScreen(mode, me?.strokes);
   });
   el.querySelector('.beat')?.addEventListener('click', () => { sfx.click(); if (mode.kind === 'replay') drawScreen(mode); });
@@ -470,6 +468,19 @@ function results(race: Race, seed: number, cs: Contender[], mode: Mode, entrants
     save(card({ strokes: cs[subject.idx].strokes, name: subject.name, place: PLACINGS[place], time: timeOf(subject), kind: k.label, win: place === 0 }), `squiggle-cup-${slug}.png`);
   });
   el.querySelector('.save-drawing')!.addEventListener('click', () => { sfx.click(); save(drawingPng(cs[subject.idx].strokes), `${slug}.png`); });
+  // The server races the drawing again itself; the time it posts is verified.
+  const post = el.querySelector<HTMLButtonElement>('.post');
+  post?.addEventListener('click', async () => {
+    sfx.click();
+    post.disabled = true;
+    const toast = el.querySelector<HTMLElement>('.toast')!;
+    toast.textContent = 'Verifying…';
+    try {
+      const r = await postToBoard(codeOf(cs[subject.idx].strokes, subject.name), subject.name, store.get('sc:name') || 'Anonymous');
+      toast.innerHTML = `Verified ${(r.entry.ms / 1000).toFixed(3)} s · <b>#${r.rank}</b> of ${r.total} overall, #${r.kindRank} ${esc(KINDS[r.entry.kind].label.toLowerCase())}. <button class="linkish mono see-board">See the board →</button>`;
+      toast.querySelector('.see-board')!.addEventListener('click', () => leaderboard(r.entry.kind, r.entry.id));
+    } catch (e) { toast.textContent = (e as Error).message; post.disabled = false; }
+  });
   el.querySelector('.share')!.addEventListener('click', async () => {
     sfx.click();
     const focus = people.findIndex((c) => c.id === (mine?.id ?? ''));
@@ -484,6 +495,45 @@ function results(race: Race, seed: number, cs: Contender[], mode: Mode, entrants
       toast.innerHTML = `<input readonly value="${esc(link)}" onclick="this.select()">`;
     }
   });
+}
+
+// ---------- Leaderboard ----------
+
+const BOARD_KINDS: Kind[] = ['quadruped', 'biped', 'centipede', 'hopper', 'flyer', 'roller', 'worm', 'jelly'];
+
+async function leaderboard(kind?: Kind, highlight?: string) {
+  const el = screen('board', `${masthead('LEADERBOARD')}
+    <section class="board-head">
+      <h1>Fastest creatures</h1>
+      <p class="lede">Every time is raced again by the server. Equal times share a place.</p>
+      <nav class="tabs mono" aria-label="Creature type">
+        <button data-k="" class="${kind ? '' : 'on'}">All</button>
+        ${BOARD_KINDS.map((k) => `<button data-k="${k}" class="${k === kind ? 'on' : ''}">${KINDS[k].label}</button>`).join('')}
+      </nav>
+    </section>
+    <ol class="table board-rows" aria-live="polite"><li class="muted mono">Loading…</li></ol>
+    <p class="foot-note mono"></p>
+    <div class="actions"><button class="btn primary draw-one">Draw one <span aria-hidden="true">→</span></button></div>`);
+  wire(el);
+  el.querySelectorAll<HTMLButtonElement>('.tabs button').forEach((b) => b.addEventListener('click', () => { sfx.click(); leaderboard((b.dataset.k || undefined) as Kind | undefined); }));
+  el.querySelector('.draw-one')!.addEventListener('click', () => { sfx.click(); game = newSeed(); drawScreen({ kind: 'solo' }); });
+  const rows = el.querySelector('.board-rows')!;
+  try {
+    const page = await board(kind);
+    if (!el.isConnected) return;
+    el.querySelector('.foot-note')!.textContent = `RULES ${page.rules.toUpperCase()} · SEASON ${page.season.slice(1)} · ${page.total} ${page.total === 1 ? 'CREATURE' : 'CREATURES'}`;
+    rows.innerHTML = page.entries.length ? '' : '<li class="muted">No creatures yet. Race one and post it.</li>';
+    for (const e of page.entries) {
+      const li = document.createElement('li');
+      if (e.id === highlight) li.className = 'me';
+      li.innerHTML = `<span class="pos mono">${e.rank}</span><span class="mini"></span><span class="who"><b>${esc(e.creature)}</b><small>${esc(e.creator)} · ${KINDS[e.kind].label}</small></span><span class="time mono">${(e.ms / 1000).toFixed(3)} s</span>`;
+      const d = fromCode(e.code);
+      if (d) li.querySelector('.mini')!.appendChild(thumb(d.strokes, 40));
+      rows.appendChild(li);
+    }
+  } catch (e) {
+    rows.innerHTML = `<li class="muted">${esc((e as Error).message)}</li>`;
+  }
 }
 
 // ---------- Shared races: #race=<seed>.<code>.<code>&me=<i> ----------
@@ -501,6 +551,26 @@ function readShared(): { seed: number; people: Contender[]; focus: number; taps:
   const tapCodes = (/[#&]taps=([0-9a-z.-]*)/.exec(location.hash)?.[1] ?? '').split('.');
   const taps = new Map(people.map((p, i) => [p.id, unpackTaps(tapCodes[i] ?? '')]));
   return people.length ? { seed: Number(m[1]) >>> 0, people, focus: Math.min(focus, people.length - 1), taps } : null;
+}
+
+// ---------- Gallery: every house family at three skill levels (?demo=gallery) ----------
+
+function gallery() {
+  const el = screen('gallery', `${masthead('HOUSE CREATURES')}<section class="gallery-grid"></section>`);
+  wire(el);
+  const grid = el.querySelector('.gallery-grid')!;
+  for (const fam of FAMILIES) for (const skill of [0.15, 0.5, 0.95]) {
+    const t = template(mulberry32(1000 + FAMILIES.indexOf(fam) * 31 + skill * 100), fam, skill);
+    const strokes = canonical(t.strokes);
+    const a = analyze(strokes)!;
+    const race = new Race([{ anatomy: a, name: '', kind: 'player' }]);
+    while (!race.over) race.step();
+    const sc = race.racers[0].s.score;
+    const card = document.createElement('figure');
+    card.appendChild(thumb(strokes, 150));
+    card.insertAdjacentHTML('beforeend', `<figcaption><b>${FAMILY_NAMES[fam]}</b> <span class="mono">skill ${skill}</span><br><span class="mono">${KINDS[a.kind].label} · form ${Math.round(sc.form * 100)} · craft ${Math.round(sc.craft * 100)} · score ${Math.round(sc.total * 100)}</span><br><span class="mono">${race.racers[0].finishTime?.toFixed(2)} s · ${sc.features.join(', ') || 'no details'}</span></figcaption>`);
+    grid.appendChild(card);
+  }
 }
 
 // ---------- Boot ----------
@@ -523,12 +593,15 @@ if (demo) {
     while (!race.over) race.step();
     heat = 1;
     results(race, 1234, cs, { kind: 'solo' });
-  } else if (demo === 'lobby') {
+  } else if (demo === 'gallery') gallery();
+  else if (demo === 'board') leaderboard();
+  else if (demo === 'lobby') {
     const fake = { code: 'KQRT', id: 'a', host: 'a', players: [{ id: 'a', name: 'Sadid' }, { id: 'b', name: 'Mei' }, { id: 'c', name: 'Jonas' }], isHost: true, cast() {}, leave() {} };
     room = fake as unknown as Room;
     lobby();
   } else home();
 } else if (shared) {
+  game = shared.seed;
   const cs = field(shared.people, shared.seed);
   runRace(cs, shared.seed, shared.people[shared.focus].id, { kind: 'replay', people: shared.people, sharer: shared.people[shared.focus].id }, undefined, 0, shared.taps);
 } else if (roomInHash()) {

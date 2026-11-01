@@ -7,8 +7,8 @@ import type { Race, RaceEvent } from './race';
 
 // Canvas 2D renderer. The race is an architect's presentation board lying on
 // a desk, photographed tilt-shift: a white sheet with a faint drafting grid,
-// lanes ruled across it, dimension lines and grid bubbles, seen at a slight
-// angle with the focus band on the lanes. Creatures are exactly the drawn
+// lanes ruled across it and dimension lines, seen from straight above with
+// the focus band on the lanes. Creatures are exactly the drawn
 // strokes in pen ink, posed by the physics: legs reach where the simulated
 // feet are, wings beat with the flap, snakes carry a travelling wave.
 // Render-only: nothing here feeds back into the simulation.
@@ -37,9 +37,67 @@ const partPath = (p: Part) => {
 };
 const d2 = (a: Pt, b: Pt) => (a[0] - b[0]) ** 2 + (a[1] - b[1]) ** 2;
 
+// Painting and bounds use the same articulated parts, including moving feet,
+// wings and tails. Lane fitting must include the pose, not just the raw box.
+function posedParts(pose: Pose, visit: (p: Part, angle: number, stretch: number, points: Pt[], wave: boolean) => void) {
+  const { body: b, anatomy: a, size, t } = pose;
+  const [cx, cy] = a.center;
+  const wave = (a.kind === 'worm' || a.kind === 'scribble') && !b.legs.length;
+  let legIdx = 0, wheelIdx = 0;
+  for (const p of a.parts) {
+    let angle = 0, stretch = 1;
+    if (p.kind === 'leg') {
+      const leg = b.legs[legIdx++];
+      if (leg) {
+        const dx = leg.foot[0] - b.x, dy = leg.foot[1] - b.y;
+        const c = Math.cos(-b.th), sn = Math.sin(-b.th);
+        const fx = cx + (c * dx - sn * dy) / size, fy = cy - (sn * dx + c * dy) / size;
+        const rest = p.pts.reduce((f, q) => (d2(q, p.pivot) > d2(f, p.pivot) ? q : f), p.pivot);
+        angle = Math.atan2(fy - p.pivot[1], fx - p.pivot[0]) - Math.atan2(rest[1] - p.pivot[1], rest[0] - p.pivot[0]);
+        stretch = Math.max(0.7, Math.min(1.15, leg.len / leg.L));
+      }
+    } else if (p.kind === 'wing') angle = -Math.sin(b.flap) * (0.18 + 0.62 * b.flapAmp) * (p.side || 1);
+    else if (p.kind === 'wheel') { const wh = b.wheels[wheelIdx++]; if (wh) angle = b.roll / Math.max(0.01, wh.r); }
+    else if (p.kind === 'tail') angle = Math.sin(t * 6 + p.pivot[0] * 0.05) * 0.14;
+    const points = wave ? p.pts.map(([x, y]): Pt => {
+      const u = (x - a.box.x0) / Math.max(1, a.box.w);
+      return [x, y + (0.028 / size) * (0.3 + 0.7 * (1 - u)) * Math.sin(7 * size * x + b.gait)];
+    }) : p.pts;
+    visit(p, angle, stretch, points, wave);
+  }
+}
+
+export interface Bounds { left: number; top: number; right: number; bottom: number }
+
+// Metres relative to the centre of mass, with screen y pointing down.
+export function creatureBounds(pose: Pose): Bounds {
+  const { anatomy: a, body: b, size } = pose;
+  const [cx, cy] = a.center;
+  const squash = Math.abs(b.squash - 1) > 0.003 || a.kind === 'jelly' ? b.squash : 1;
+  const lean = a.kind === 'jelly' ? -0.07 * Math.sin(b.gait * 0.6 + 0.8) : 0;
+  const c = Math.cos(-b.th), sn = Math.sin(-b.th);
+  const bounds: Bounds = { left: Infinity, top: Infinity, right: -Infinity, bottom: -Infinity };
+  posedParts(pose, (p, angle, stretch, points) => {
+    const pc = Math.cos(angle), ps = Math.sin(angle);
+    // Include the pen outline and a little room for its smoothed caps.
+    const pen = p.w * size * Math.max(1, stretch) * Math.max(squash, 1 / Math.sqrt(squash)) * 1.2;
+    for (const [px, py] of points) {
+      const dx = px - p.pivot[0], dy = (py - p.pivot[1]) * stretch;
+      const x = p.pivot[0] + pc * dx - ps * dy;
+      const y = p.pivot[1] + ps * dx + pc * dy;
+      const sx = ((x - cx) / Math.sqrt(squash) + lean * squash * (y - a.box.y1)) * size;
+      const sy = (a.box.y1 + (y - a.box.y1) * squash - cy) * size;
+      const bx = c * sx - sn * sy, by = sn * sx + c * sy;
+      bounds.left = Math.min(bounds.left, bx - pen); bounds.right = Math.max(bounds.right, bx + pen);
+      bounds.top = Math.min(bounds.top, by - pen); bounds.bottom = Math.max(bounds.bottom, by + pen);
+    }
+  });
+  return bounds;
+}
+
 // Draws a creature with its centre of mass at screen (sx, sy). k: screen px per metre.
 export function paintCreature(ctx: CanvasRenderingContext2D, pose: Pose, sx: number, sy: number, k: number) {
-  const { body: b, anatomy: a, size, t } = pose;
+  const { body: b, anatomy: a, size } = pose;
   const [cx, cy] = a.center;
   const s = size * k; // screen px per pad px
   ctx.save();
@@ -56,50 +114,16 @@ export function paintCreature(ctx: CanvasRenderingContext2D, pose: Pose, sx: num
     ctx.translate(-cx, -a.box.y1);
   }
 
-  // Snakes: a wave running tail-ward at the speed the body moves forward, so
-  // each stretch of body follows the path of the one ahead. Calmer at the head.
-  const wave = (a.kind === 'worm' || a.kind === 'scribble') && !b.legs.length;
-  const kx = 7 * size, amp = 0.028 / size;
-  const ripple = (pts: Pt[]): Pt[] => pts.map(([x, y]) => {
-    const u = (x - a.box.x0) / Math.max(1, a.box.w);
-    return [x, y + amp * (0.3 + 0.7 * (1 - u)) * Math.sin(kx * x + b.gait)];
-  });
-
-  let legIdx = 0;
-  for (const p of a.parts) {
+  posedParts(pose, (p, angle, stretch, points, wave) => {
     ctx.save();
-    if (p.kind === 'leg') {
-      const leg = b.legs[legIdx++];
-      if (leg) {
-        // Where the physics foot is, in this pad-pixel body frame.
-        const dx = leg.foot[0] - b.x, dy = leg.foot[1] - b.y;
-        const c = Math.cos(-b.th), sn = Math.sin(-b.th);
-        const lx = c * dx - sn * dy, ly = sn * dx + c * dy;
-        const fx = cx + lx / size, fy = cy - ly / size;
-        const rest = p.pts.reduce((f, q) => (d2(q, p.pivot) > d2(f, p.pivot) ? q : f), p.pivot);
-        const want = Math.atan2(fy - p.pivot[1], fx - p.pivot[0]);
-        const was = Math.atan2(rest[1] - p.pivot[1], rest[0] - p.pivot[0]);
-        const q = Math.max(0.7, Math.min(1.15, leg.len / leg.L));
-        ctx.translate(p.pivot[0], p.pivot[1]);
-        ctx.rotate(want - was);
-        ctx.scale(1, q);
-        ctx.translate(-p.pivot[0], -p.pivot[1]);
-      }
-    } else if (p.kind === 'wing') {
-      // A full beat when it's working hard, a slow flex on the line.
-      const beat = Math.sin(b.flap) * (0.18 + 0.62 * b.flapAmp);
-      ctx.translate(p.pivot[0], p.pivot[1]);
-      ctx.rotate(-beat * (p.side || 1));
-      ctx.translate(-p.pivot[0], -p.pivot[1]);
-    } else if (p.kind === 'tail') {
-      ctx.translate(p.pivot[0], p.pivot[1]);
-      ctx.rotate(Math.sin(t * 6 + p.pivot[0] * 0.05) * 0.14);
-      ctx.translate(-p.pivot[0], -p.pivot[1]);
-    }
+    ctx.translate(p.pivot[0], p.pivot[1]);
+    ctx.rotate(angle);
+    ctx.scale(1, stretch);
+    ctx.translate(-p.pivot[0], -p.pivot[1]);
     ctx.fillStyle = p.color;
-    ctx.fill(wave ? strokePath(ripple(p.pts), p.w) : partPath(p));
+    ctx.fill(wave ? strokePath(points, p.w) : partPath(p));
     ctx.restore();
-  }
+  });
   ctx.restore();
 }
 
@@ -122,10 +146,15 @@ function shadow(ctx: CanvasRenderingContext2D, x: number, y: number, rx: number,
 // ---------- The race board ----------
 
 const LANE_Z = 1.25; // metres between lane lines
-const TILT = 0.2;    // how much the far lanes shrink: 1 / (1 + TILT)
-// Creatures are drawn a bit under life size so each stays inside its own lane
-// instead of covering the one behind it.
-const CS = 0.62;
+// Height above the ground is drawn true up to standing height; anything above
+// that (flight, hops) at ALT of its true size, the same for every creature:
+// a flyer lifts off its shadow and beats its wings, and headroom for its
+// full altitude doesn't shrink every creature in the race.
+const ALT = 0.12;
+export const shownHeight = (y: number, rest: number) => (y <= rest ? y : rest + (y - rest) * ALT);
+// The most any creature reaches above and below its ground line, in metres,
+// as drawn (checked over whole races of every template by test/sim.test.ts).
+export const REACH_UP = 1.25, REACH_DOWN = 0.16;
 const ease = (x: number) => 1 - (1 - Math.min(1, Math.max(0, x))) ** 3;
 
 interface Finish { who: number; place: number; time: number; at: number }
@@ -163,7 +192,7 @@ export class Renderer {
     const cv = this.canvas;
     const dpr = Math.min(2, window.devicePixelRatio || 1);
     const W = Math.round(cv.clientWidth * dpr), H = Math.round(cv.clientHeight * dpr);
-    if (cv.width !== W || cv.height !== H) {
+    if (cv.width !== W || cv.height !== H || this.sharp.width !== W || this.sharp.height !== H) {
       cv.width = this.sharp.width = W; cv.height = this.sharp.height = H;
       this.small.width = this.small2.width = Math.max(1, Math.round(W / 6));
       this.small.height = this.small2.height = Math.max(1, Math.round(H / 6));
@@ -174,7 +203,8 @@ export class Renderer {
 
     const race = this.race, racers = race.racers, N = racers.length;
     const portrait = W < H * 0.9;
-    const base = portrait ? 7.5 : 14;
+    const compact = H < 480 * dpr;
+    const base = portrait ? 5.5 : 9;
     const me = race.playerRacer;
 
     // Camera: follow the pack, widening to keep it in view, never losing you.
@@ -192,12 +222,17 @@ export class Renderer {
 
     // Projection of the sheet: X along the course, Z across it (0 = front edge).
     const Zmax = N * LANE_Z;
-    const yFront = H * (portrait ? 0.72 : 0.8), yBack = H * (portrait ? 0.36 : 0.3);
-    const yH = (yBack * (1 + TILT) - yFront) / TILT;
+    // Lanes fill the height, leaving just over half a lane above and below
+    // for the dimension lettering in the margins.
+    const laneStep = H / (N + 1.1);
+    const yFront = H - 0.5 * laneStep, yBack = 0.6 * laneStep;
     const s0 = W / this.viewW;
-    const f = (Z: number) => 1 / (1 + (TILT * Z) / Zmax);
-    const P = (X: number, Z: number): Pt => [W / 2 + (X - this.camX) * s0 * f(Z), yH + (yFront - yH) * f(Z)];
-    const laneZ = (i: number) => (N - 1 - i + 0.5) * LANE_Z; // lane 0 at the back
+    // Seen straight down, like a drawing on the desk: every lane the same
+    // height, every line square. (A tilted view made the far lanes shrink.)
+    const P = (X: number, Z: number): Pt => [W / 2 + (X - this.camX) * s0, yFront + ((yBack - yFront) * Z) / Zmax];
+    // Put feet near the lower edge of each lane, leaving space above for
+    // the creature and its own header. Lane 0 is at the back.
+    const laneZ = (i: number) => (N - 1 - i + 0.12) * LANE_Z;
     const X0 = -4.5, X1 = FINISH + 6, Zf = -1.1, Zb = Zmax + 1.3;
 
     const c = this.sctx;
@@ -237,12 +272,12 @@ export class Renderer {
 
     // Your lane: one accent, quietly.
     if (me) {
-      const z = laneZ(race.player);
+      const near = (N - 1 - race.player) * LANE_Z, far = near + LANE_Z;
       c.fillStyle = 'rgba(255,90,31,0.055)';
-      quad(vx0, vx1, z - LANE_Z / 2, z + LANE_Z / 2);
+      quad(vx0, vx1, near, far);
       c.fill();
-      line(P(vx0, z - LANE_Z / 2), P(vx1, z - LANE_Z / 2), 'rgba(255,90,31,0.55)', lw);
-      line(P(vx0, z + LANE_Z / 2), P(vx1, z + LANE_Z / 2), 'rgba(255,90,31,0.55)', lw);
+      line(P(vx0, near), P(vx1, near), 'rgba(255,90,31,0.55)', lw);
+      line(P(vx0, far), P(vx1, far), 'rgba(255,90,31,0.55)', lw);
     }
 
     // Sheet border: a fine double rule.
@@ -264,15 +299,6 @@ export class Renderer {
       c.fillText(text, 0, 0);
       c.restore();
     };
-    const ring = (X: number, Z: number, r: number, fill: string | null, stroke: string) => {
-      const o = P(X, Z), ax = P(X + 1, Z), bz = P(X, Z + 1);
-      c.save();
-      c.setTransform(ax[0] - o[0], 0, o[0] - bz[0], o[1] - bz[1], o[0], o[1]);
-      c.beginPath(); c.arc(0, 0, r, 0, Math.PI * 2);
-      if (fill) { c.fillStyle = fill; c.fill(); }
-      c.lineWidth = 0.02; c.strokeStyle = stroke; c.stroke();
-      c.restore();
-    };
 
     // Metre marks along the front margin, in millimetres like a real drawing.
     for (let X = Math.ceil(vx0 / 5) * 5; X <= Math.min(vx1, FINISH); X += 5) {
@@ -288,7 +314,7 @@ export class Renderer {
       const a = P(X - 0.12, zd - 0.12), b = P(X + 0.12, zd + 0.12);
       line(a, b, INK, lw * 1.4);
       line(P(X, zd - 0.25), P(X, zd + 0.25), '#8d939c', lw);
-      if (X > 0) label(X - 5, zd + 0.22, `${(X * 1000).toLocaleString('en').replace(/,/g, ' ')}`, 0.2, 500, MONO, TEXT);
+      if (X > 0) label(X - 5, zd - 0.2, `${(X * 1000).toLocaleString('en').replace(/,/g, ' ')}`, 0.2, 500, MONO, TEXT);
     }
 
     // Start line and lettering.
@@ -303,29 +329,30 @@ export class Renderer {
     c.restore();
     label(FINISH + 0.5, Zf + 0.62, 'FINISH', 0.26, 600, MONO, INK, 'left');
 
-    // Grid bubbles: lane numbers, yours in the accent.
-    for (let i = 0; i < N; i++) {
-      const z = laneZ(i), mine = i === race.player;
-      ring(-1.5, z, 0.3, mine ? ACCENT : PAPER, mine ? ACCENT : '#8d939c');
-      label(-1.5, z, String(i + 1).padStart(2, '0'), 0.24, 600, MONO, mine ? '#fff' : INK);
-      line(P(-1.2, z), P(-0.15, z), mine ? 'rgba(255,90,31,0.6)' : LINE, lw);
-    }
-
-    // Creatures, back lanes first, standing on their lane lines.
-    const tags: { x: number; y: number; name: string; mine: boolean; done: string | null }[] = [];
+    // Every racer, yours included, is drawn at one scale for the whole race:
+    // sized so the tallest pose any creature reaches fits the back (smallest)
+    // lane under its reserved text row. Nothing about a pose, a wingbeat or
+    // the camera changes it; only the canvas size does.
+    const nameRow = compact ? 0 : 22 * dpr;
+    const laneH = P(0, (N - 1) * LANE_Z)[1] - P(0, N * LANE_Z)[1];
+    const k = Math.max(1, (laneH - nameRow - 4 * dpr) / (REACH_UP + REACH_DOWN));
+    const tags: { x: number; y: number; name: string; mine: boolean; idx: number; done: string | null }[] = [];
+    const order = race.standings();
     let myTop = Infinity;
     for (let i = 0; i < N; i++) {
-      const r = racers[i], b = r.body, z = laneZ(i);
-      const k = s0 * f(z) * CS;
-      const [gx, gy] = P(b.x, z);
+      const r = racers[i], b = r.body;
+      const pose = { body: b, anatomy: r.anatomy, size: r.s.size, t: race.time };
+      const laneTop = P(0, (N - i) * LANE_Z)[1];
+      const laneBottom = P(0, (N - 1 - i) * LANE_Z)[1];
+      const gx = P(b.x, laneZ(i))[0];
+      const gy = laneBottom - REACH_DOWN * k - 2 * dpr;
       if (gx < -3 * k || gx > W + 3 * k) continue;
-      const alt = b.y + b.bottom;
-      shadow(c, gx, gy, b.length * 0.42 * k, b.length * 0.42 * k * 0.22, alt);
-      paintCreature(c, { body: b, anatomy: r.anatomy, size: r.s.size, t: now / 1000 }, gx, gy - b.y * k, k);
-      const top = gy - (b.y + b.height * 0.55 + 0.18) * k;
-      if (r === me) myTop = top;
-      // Every creature is named; tags are spaced apart below so none overlap.
-      tags.push({ x: gx, y: top, name: r.name, mine: r === me, done: null });
+      const y = shownHeight(b.y, r.restY);
+      shadow(c, gx, gy, b.length * 0.42 * k, b.length * 0.42 * k * 0.22, b.y + b.bottom);
+      paintCreature(c, pose, gx, gy - y * k, k);
+      myTop = Math.min(myTop, gy + (creatureBounds(pose).top - y) * k);
+      tags.push({ x: gx, y: compact ? (laneTop + laneBottom) / 2 + 4 * dpr : laneTop + 16 * dpr, name: r.name, mine: r === me, idx: i,
+        done: r.finishTime === null ? null : `${PLACE[order.indexOf(r)]}  ${r.finishTime.toFixed(2)} s` });
     }
 
     // Finish moments: a leader line and the time, drawn in at the line.
@@ -334,9 +361,6 @@ export class Renderer {
       const z = laneZ(fin.who);
       const a = P(FINISH + 0.32, z), b = P(FINISH + 0.32 + 1.6 * p, z);
       line(a, b, fin.who === race.player ? ACCENT : INK, lw);
-      c.globalAlpha = p;
-      label(FINISH + 2.05, z, `${PLACE[fin.place - 1] ?? fin.place}  ${fin.time.toFixed(2)}`, 0.24, 600, MONO, fin.who === race.player ? ACCENT : INK, 'left');
-      c.globalAlpha = 1;
     }
     if (this.photo) {
       const p = ease((now - this.photo.at) / 600);
@@ -383,21 +407,40 @@ export class Renderer {
     c.globalCompositeOperation = 'source-over';
     out.drawImage(this.sharp, 0, 0);
 
-    // Name tags stay crisp wherever they sit, nudged up so none overlap.
-    const placed: { x: number; y: number }[] = [];
-    for (const t of tags.slice().sort((a, b) => b.y - a.y)) {
-      for (let i = 0; i < 6 && placed.some((p) => Math.abs(p.x - t.x) < 110 * dpr && Math.abs(p.y - t.y) < 15 * dpr); i++) t.y -= 15 * dpr;
-      placed.push(t);
-    }
-    out.textAlign = 'center';
+    // Screen-sized text stays readable on phones. Numbers, names and finish
+    // times have separate horizontal slots and never share a creature's area.
+    const nameLeft = 46 * dpr, nameRight = W - Math.min(120 * dpr, W * 0.3) - 16 * dpr;
     out.textBaseline = 'alphabetic';
     for (const t of tags) {
-      out.font = `${t.mine ? 700 : 600} ${Math.round(11.5 * dpr)}px ${SANS}`;
-      out.fillStyle = t.mine ? ACCENT : 'rgba(21,23,28,0.62)';
-      out.fillText(t.name, t.x, t.y);
+      const color = t.mine ? ACCENT : INK;
+      out.fillStyle = PAPER;
+      out.fillRect(10 * dpr, t.y - 15 * dpr, 27 * dpr, 21 * dpr);
+      out.strokeStyle = t.mine ? ACCENT : LINE; out.lineWidth = dpr;
+      out.strokeRect(10 * dpr, t.y - 15 * dpr, 27 * dpr, 21 * dpr);
+      out.font = `500 ${12 * dpr}px ${MONO}`;
+      out.textAlign = 'center'; out.fillStyle = color;
+      out.fillText(String(t.idx + 1).padStart(2, '0'), 23.5 * dpr, t.y);
+      // Short landscape screens put full names and times in the side panel.
+      if (compact) continue;
+      out.font = `${t.mine ? 700 : 600} ${13 * dpr}px ${SANS}`;
+      const limit = Math.max(1, Math.min(260 * dpr, nameRight - nameLeft));
+      let name = t.name;
+      if (out.measureText(name).width > limit) {
+        const chars = Array.from(name);
+        while (chars.length && out.measureText(chars.join('') + '…').width > limit) chars.pop();
+        name = chars.join('') + '…';
+      }
+      const width = out.measureText(name).width;
+      const x = Math.max(nameLeft, Math.min(t.x - width / 2, nameRight - width));
+      out.fillStyle = PAPER; out.fillRect(x - 3 * dpr, t.y - 15 * dpr, width + 6 * dpr, 21 * dpr);
+      out.textAlign = 'left'; out.fillStyle = color;
+      out.fillText(name, x, t.y);
       if (t.done) {
-        out.font = `500 ${Math.round(10 * dpr)}px ${MONO}`;
-        out.fillText(`${t.done} s`, t.x, t.y - 13 * dpr);
+        out.font = `500 ${11.5 * dpr}px ${MONO}`;
+        const timeWidth = out.measureText(t.done).width;
+        out.fillStyle = PAPER; out.fillRect(W - 19 * dpr - timeWidth, t.y - 15 * dpr, timeWidth + 6 * dpr, 21 * dpr);
+        out.textAlign = 'right'; out.fillStyle = color;
+        out.fillText(t.done, W - 16 * dpr, t.y);
       }
     }
 
@@ -418,12 +461,12 @@ const PLACE = ['1st', '2nd', '3rd', '4th', '5th', '6th'];
 
 // ---------- Draw-screen preview: one lane of the same sheet ----------
 
-export function drawPreview(ctx: CanvasRenderingContext2D, W: number, H: number, pose: Pose | null, camX: number, dpr: number) {
+export function drawPreview(ctx: CanvasRenderingContext2D, W: number, H: number, pose: Pose | null, rest: number, camX: number, dpr: number) {
   ctx.setTransform(1, 0, 0, 1, 0, 0);
   ctx.fillStyle = PAPER;
   ctx.fillRect(0, 0, W, H);
-  const k = H / 1.75;                 // px per metre
   const ground = H * 0.8;
+  const k = (ground - 6 * dpr) / REACH_UP; // px per metre, the race's scale rule
   const sx = (x: number) => W * 0.42 + (x - camX) * k;
   for (let X = Math.floor((camX - W / k) * 4) / 4; X < camX + W / k; X += 0.25) {
     const major = Math.abs(X - Math.round(X)) < 1e-6;
@@ -442,6 +485,6 @@ export function drawPreview(ctx: CanvasRenderingContext2D, W: number, H: number,
   if (pose) {
     const b = pose.body;
     shadow(ctx, sx(b.x), ground, b.length * 0.42 * k, b.length * 0.42 * k * 0.2, b.y + b.bottom);
-    paintCreature(ctx, pose, sx(b.x), ground - b.y * k, k);
+    paintCreature(ctx, pose, sx(b.x), ground - shownHeight(b.y, rest) * k, k);
   }
 }
