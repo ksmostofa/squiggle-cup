@@ -8,16 +8,18 @@ Create a room and share its four-letter code, or play solo against the house cre
 
 ## How speed works
 
-A drawing's score decides its speed (`src/score.ts`):
+A drawing's score decides its speed (`src/score.ts`), and the top is meant to take real drawing skill:
 
-- **Movement design (45%)**: proportions that help its kind move, such as even legs of a good length, big wings or a round body.
-- **Craftsmanship (55%)**: a joined-up creature (no floating bits, no scribbled tangle), a face looking the way it runs, and the kinds of detail it has (head, tail, ears, markings). Detail counts kinds of feature, not strokes, and each new kind adds less.
+- **Movement design (30%)**: proportions that help its kind move, judged tightly: even legs of the right length (and the right number), wings of the right span, a truly round body.
+- **Craftsmanship (70%)**: a joined-up creature (no floating bits, no scribbled tangle) × line quality (steady strokes, loops that close) × expression (eyes looking the way it runs, a mouth) and detail. Detail counts kinds of feature (head, neck, tail, ears, feet, pupils, markings…), never strokes, and each new kind adds less.
 
 Speed flattens toward the top, so the last points are the hardest. Every kind has the same best possible time (14.60 s over 40 m). The draw screen shows the score, its two halves and the next thing to try.
 
-House creatures come from ten curated families: horse, dog, cat, human, robot, bird, bat, snake, blob and many-legged. Each is drawn from a seed with a skill level, and scored by the same rules. A new game deals a new lineup; Rematch and Redraw keep it. Their skill levels are set against ordinary first drawings (`test/beginners.ts`): an ordinary drawing finishes mid-pack and sometimes wins; a careful one usually wins. Vehicles (wheels, cars, jets, rockets) are planned as a separate mode.
+House creatures come from ten curated families: horse, dog, cat, human, robot, bird, bat, snake, blob and many-legged. Each is drawn from a seed with a skill level and scored by the same rules. A new game deals a new lineup; Rematch and Redraw keep it. Their skill levels are set against ordinary first drawings (`test/beginners.ts`): an ordinary drawing finishes mid-pack and sometimes wins; a careful one usually wins. Vehicles (wheels, cars, jets, rockets) are planned as a separate mode.
 
-The leaderboard (`server/board.ts`) re-races every posted drawing on the server, so its times are verified. It has overall and per-type views, and equal times share a place. Entries carry a rules version and a season (`src/verify.ts`); bump `RULES` whenever the simulation or scoring changes.
+The leaderboard (`server/board.ts`) re-races every posted drawing on the server, so its times are verified. It has overall and per-type views, equal times share a place, and every entry can be challenged 1v1 as often as you like. Entries carry a rules version and a season (`src/verify.ts`); bump `RULES` whenever the simulation or scoring changes.
+
+Every creature you race is kept under **My creatures** on that device, ready to race again or touch up. Esc (or the II button) pauses a solo race; in a room it offers to leave.
 
 ## Development
 

@@ -90,6 +90,18 @@ export class Body {
     this.m = Math.max(0.4, bodyArea * 40 + limbInk * 0.8);
     const r2 = this.hull.reduce((s, p) => s + p[0] * p[0] + p[1] * p[1], 0) / this.hull.length;
     this.I = this.m * Math.max(0.01, r2 * 0.55);
+    // The rest of the drawing touches the floor too: a second loop under the
+    // body stands on it, a low tail drags along it. (Legs hold themselves up,
+    // wings are in the air, eyes are inside.) A roller turns, so anything
+    // sticking out of it bumps the floor as it rolls; it still rolls on its
+    // body's radius.
+    for (const p of a.parts) {
+      if (p === a.body || p.kind === 'leg' || p.kind === 'wing' || p.kind === 'eye' || p.kind === 'wheel' || p.pts.length < 2) continue;
+      const pts = p.pts.map(local);
+      const reach = tuning.kind === 'roller' ? Math.max(...pts.map((q) => Math.sqrt(q[0] * q[0] + q[1] * q[1]))) > this.R : Math.min(...pts.map((q) => q[1])) < this.bottom;
+      if (reach) this.hull.push(...resample(rdp(pts, 0.02), false, 16));
+    }
+    this.bottom = Math.min(...this.hull.map((p) => p[1]));
 
     for (const p of a.parts) {
       if (p.kind === 'leg') {

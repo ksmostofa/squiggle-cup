@@ -7,6 +7,7 @@ import { DT, KINDS } from './creature';
 import { canonical, codeOf, fromCode } from './drawing';
 import { thumb } from './ink';
 import { board, postToBoard } from './board';
+import { verify } from './verify';
 import { card, drawingPng, save } from './card';
 import { type Cast, type Entrant, Room } from './net';
 import { PLACINGS, fact, formalName } from './names';
@@ -60,7 +61,9 @@ let game = newSeed();
 type Mode =
   | { kind: 'solo' }
   | { kind: 'room'; room: Room }
-  | { kind: 'replay'; people: Contender[]; sharer: string };
+  | { kind: 'replay'; people: Contender[]; sharer: string }
+  // 1v1 against a leaderboard creature, as often as you like.
+  | { kind: 'challenge'; foe: Contender; foeTime: number };
 
 let me: { strokes: Stroke[]; name: string } | null = null;
 let room: Room | null = null;
@@ -129,7 +132,7 @@ function home(error = '') {
         <button class="btn">Join</button>
       </form>
       <p class="error" role="alert">${esc(error)}</p>
-      <button class="linkish mono to-board">Leaderboard →</button>
+      <p class="home-links"><button class="linkish mono to-stable">My creatures →</button><button class="linkish mono to-board">Leaderboard →</button></p>
     </section>
     <footer class="foot mono"><span>DWG 01</span><span>NO LUCK</span><span>40 000 MM</span></footer>`);
   wire(el);
@@ -138,6 +141,7 @@ function home(error = '') {
   const name = () => { const n = nameIn.value.trim().slice(0, 22); store.set('sc:name', n); return n; };
   el.querySelector('.solo')!.addEventListener('click', () => { unlock(); sfx.click(); name(); game = newSeed(); drawScreen({ kind: 'solo' }); });
   el.querySelector('.to-board')!.addEventListener('click', () => { sfx.click(); leaderboard(); });
+  el.querySelector('.to-stable')!.addEventListener('click', () => { sfx.click(); name(); stable(); });
   el.querySelector('.create')!.addEventListener('click', () => { unlock(); sfx.click(); connect(name()); });
   el.querySelector<HTMLFormElement>('.join')!.addEventListener('submit', (e) => {
     e.preventDefault(); unlock();
@@ -252,11 +256,13 @@ setInterval(() => { if (room?.isHost && sent.size && started !== round && perfor
 
 function drawScreen(mode: Mode, initial: Stroke[] = []) {
   const inRoom = mode.kind === 'room';
-  const el = screen('draw', `${masthead(inRoom ? `ROOM ${mode.room.code} · ROUND ${pad2(round)}` : mode.kind === 'replay' ? 'DARE' : 'SOLO')}
+  const head = inRoom ? `ROOM ${mode.room.code} · ROUND ${pad2(round)}` : mode.kind === 'replay' ? 'DARE'
+    : mode.kind === 'challenge' ? `1V1 · BEAT ${esc(mode.foe.name.toUpperCase())} · ${mode.foeTime.toFixed(3)} S` : 'SOLO';
+  const el = screen('draw', `${masthead(head)}
     ${inRoom ? '<ol class="who-drew mono" aria-label="Who has finished"></ol>' : ''}
     <div class="waiting" role="status"><p class="mono">SENT</p><p class="msg"></p></div>`);
   wire(el);
-  const pad = new Pad((r: PadResult) => submit(mode, r, el), { initial, name: me?.name ?? store.get('sc:name'), title: inRoom ? `DWG ${pad2(round)} — DRAW NOW` : 'DWG 01 — CREATURE', time: drawTime });
+  const pad = new Pad((r: PadResult) => submit(mode, r, el), { initial, name: me?.name ?? store.get('sc:name'), title: inRoom ? `DWG ${pad2(round)} — DRAW NOW` : mode.kind === 'challenge' ? 'DWG 1V1 — CHALLENGER' : 'DWG 01 — CREATURE', time: drawTime });
   drawingPad = pad;
   pad.mount(el);
   if (inRoom) {
@@ -274,6 +280,7 @@ function submit(mode: Mode, r: PadResult, el: HTMLElement) {
   const strokes = canonical(r.strokes);
   const name = r.name || store.get('sc:name') || formalName(r.anatomy, Math.random);
   me = { strokes, name };
+  keep(strokes, name);
   if (mode.kind === 'room') {
     el.classList.add('sent');
     mode.room.cast({ k: 'drawing', round, code: codeOf(strokes, name), name });
@@ -282,6 +289,8 @@ function submit(mode: Mode, r: PadResult, el: HTMLElement) {
   const mine: Contender = { id: 'me', name, strokes, anatomy: analyze(strokes)! };
   if (mode.kind === 'replay') {
     runRace(field([mine, ...mode.people.slice(0, LANES - 1)], game), game, 'me', { kind: 'solo' });
+  } else if (mode.kind === 'challenge') {
+    runRace([mine, mode.foe], game, 'me', mode);
   } else {
     runRace(field([mine], game), game, 'me', mode);
   }
@@ -313,13 +322,37 @@ function runRace(cs: Contender[], seed: number, focus: string, mode: Mode, entra
       <ol class="standings mono" aria-live="off"></ol>
     </header>
     ${RHYTHM && mine >= 0 && !replaying ? `<button class="beat" aria-label="Tap on the beat"><i class="ring"></i><i class="dot"></i><b class="groove"><i></i></b><span class="mono hint">TAP ON THE BEAT</span></button>` : ''}
-    <div class="count mono" aria-live="assertive"></div>`);
+    <div class="count mono" aria-live="assertive"></div>
+    <button class="pause-btn mono" aria-label="Pause">II</button>
+    <div class="pause-menu" hidden role="dialog" aria-label="${mode.kind === 'room' ? 'Race menu' : 'Paused'}"><div class="card">
+      <p class="kicker mono">${mode.kind === 'room' ? 'THE RACE GOES ON FOR EVERYONE' : 'PAUSED'}</p>
+      ${mode.kind === 'room'
+        ? '<button class="btn primary resume">Keep watching</button><button class="btn ghost quit">Leave room</button>'
+        : '<button class="btn primary resume">Resume</button><button class="btn redraw-now">Redraw</button><button class="btn ghost quit">Quit to home</button>'}
+    </div></div>`);
   const canvas = el.querySelector<HTMLCanvasElement>('.stage')!;
   const view = new Renderer(canvas, race);
   const clock = el.querySelector<HTMLElement>('.clock')!;
   const count = el.querySelector<HTMLElement>('.count')!;
   const standings = el.querySelector<HTMLElement>('.standings')!;
   const beatEl = el.querySelector<HTMLElement>('.beat');
+
+  // Pause (Esc or the button). Solo races stop where they are: the race only
+  // moves when it steps, so the result is the same. A room's race can't stop
+  // for everyone, so there the menu only offers to leave.
+  const menu = el.querySelector<HTMLElement>('.pause-menu')!;
+  let paused = false;
+  const setMenu = (open: boolean) => {
+    menu.hidden = !open;
+    paused = open && mode.kind !== 'room';
+    if (open) menu.querySelector<HTMLButtonElement>('.resume')!.focus();
+  };
+  el.querySelector('.pause-btn')!.addEventListener('click', () => { sfx.click(); setMenu(menu.hidden === true); });
+  menu.querySelector('.resume')!.addEventListener('click', () => { sfx.click(); setMenu(false); });
+  menu.querySelector('.redraw-now')?.addEventListener('click', () => { sfx.click(); drawScreen(mode, cs.find((c) => c.id === focus)?.strokes); });
+  menu.querySelector('.quit')!.addEventListener('click', () => { sfx.click(); leaveRoom(); location.hash = ''; home(); });
+  const onEsc = (e: KeyboardEvent) => { if (e.key === 'Escape') { e.preventDefault(); setMenu(menu.hidden === true); } };
+  addEventListener('keydown', onEsc);
   const me = race.playerRacer;
 
   // Input: tap anywhere (or press space / any key) on your creature's beat.
@@ -337,7 +370,7 @@ function runRace(cs: Contender[], seed: number, focus: string, mode: Mode, entra
   const loop = (now: number) => {
     const dt = Math.min(0.1, (now - last) / 1000);
     last = now;
-    acc += dt;
+    if (!paused) acc += dt;
     while (acc >= DT && !race.over) { race.step(); acc -= DT; }
     for (const e of race.events.splice(0)) {
       view.event(e, now);
@@ -394,7 +427,7 @@ function runRace(cs: Contender[], seed: number, focus: string, mode: Mode, entra
     raf = requestAnimationFrame(loop);
   };
   raf = requestAnimationFrame(loop);
-  stopRace = () => { cancelAnimationFrame(raf); removeEventListener('keydown', onKey); live = null; };
+  stopRace = () => { cancelAnimationFrame(raf); removeEventListener('keydown', onKey); removeEventListener('keydown', onEsc); live = null; };
 }
 
 // ---------- Results ----------
@@ -428,6 +461,7 @@ function results(race: Race, seed: number, cs: Contender[], mode: Mode, entrants
       ${mode.kind === 'replay'
         ? '<button class="btn primary beat">Draw one to race them <span aria-hidden="true">→</span></button><button class="btn again">Watch again</button>'
         : '<button class="btn primary again">Rematch</button><button class="btn redraw">Redraw</button>'}
+      ${mode.kind === 'challenge' ? '<button class="btn ghost back-board">Back to the leaderboard</button>' : ''}
       ${mode.kind === 'room' ? '<p class="wait mono">Host picks next</p>' : ''}
       <button class="btn ghost share">Share race</button>
       <button class="btn ghost save-card">Save card</button>
@@ -454,6 +488,7 @@ function results(race: Race, seed: number, cs: Contender[], mode: Mode, entrants
       if (mode.room.isHost && entrants) mode.room.cast({ k: 'race', round: round + 1, seed, entrants: entrants.filter((e) => mode.room.players.some((p) => p.id === e.id)) });
     }
     else if (mode.kind === 'replay') runRace(cs, seed, mode.sharer, mode, undefined, 0, taps);
+    else if (mode.kind === 'challenge') runRace(cs, seed, 'me', mode);
     else runRace(field(people, seed), seed, 'me', mode);
   });
   el.querySelector('.redraw')?.addEventListener('click', () => {
@@ -461,6 +496,7 @@ function results(race: Race, seed: number, cs: Contender[], mode: Mode, entrants
     if (mode.kind === 'room') { if (mode.room.isHost) mode.room.cast({ k: 'draw', round: round + 1, time: drawTime, lineup: seed }); }
     else drawScreen(mode, me?.strokes);
   });
+  el.querySelector('.back-board')?.addEventListener('click', () => { sfx.click(); leaderboard(mode.kind === 'challenge' ? mode.foe.anatomy.kind : undefined); });
   el.querySelector('.beat')?.addEventListener('click', () => { sfx.click(); if (mode.kind === 'replay') drawScreen(mode); });
   const slug = subject.name.replace(/[^a-z0-9]+/gi, '-').toLowerCase() || 'creature';
   el.querySelector('.save-card')!.addEventListener('click', () => {
@@ -497,6 +533,51 @@ function results(race: Race, seed: number, cs: Contender[], mode: Mode, entrants
   });
 }
 
+// ---------- My creatures: every drawing you race, kept on this device ----------
+
+interface Kept { id: string; code: string; at: number }
+const KEPT = 'sc:creatures', KEEP_MAX = 40;
+function kept(): Kept[] { try { const v = JSON.parse(store.get(KEPT) || '[]'); return Array.isArray(v) ? v : []; } catch { return []; } }
+function keep(strokes: Stroke[], name: string) {
+  const id = codeOf(strokes, ''); // the drawing alone: the same drawing is kept once
+  store.set(KEPT, JSON.stringify([{ id, code: codeOf(strokes, name), at: Date.now() }, ...kept().filter((k) => k.id !== id)].slice(0, KEEP_MAX)));
+}
+
+function stable() {
+  const el = screen('board stable', `${masthead('MY CREATURES')}
+    <section class="board-head">
+      <h1>My creatures</h1>
+      <p class="lede">Every creature you race is kept here, on this device. Race one again, or touch it up first.</p>
+    </section>
+    <ol class="table board-rows"></ol>
+    <div class="actions"><button class="btn primary draw-one">Draw a new one <span aria-hidden="true">→</span></button></div>`);
+  wire(el);
+  el.querySelector('.draw-one')!.addEventListener('click', () => { sfx.click(); game = newSeed(); drawScreen({ kind: 'solo' }); });
+  const rows = el.querySelector('.board-rows')!;
+  const list = kept();
+  if (!list.length) rows.innerHTML = '<li class="muted">Nothing yet. Every creature you race will be kept here.</li>';
+  for (const k of list) {
+    const d = fromCode(k.code);
+    if (!d) continue;
+    const v = verify(k.code);
+    const li = document.createElement('li');
+    li.innerHTML = `<span class="pos mono"></span><span class="mini"></span><span class="who"><b>${esc(d.name || 'Unnamed')}</b><small>${KINDS[d.anatomy.kind].label}${v ? ` · score ${Math.round(v.score * 100)}` : ''}</small></span><span class="time mono">${v ? `${(v.ms / 1000).toFixed(3)} s` : '—'}<span class="row-actions"><button class="linkish mono use">Race →</button><button class="linkish mono drop" aria-label="Remove ${esc(d.name)}">Remove</button></span></span>`;
+    li.querySelector('.mini')!.appendChild(thumb(d.strokes, 40));
+    li.querySelector('.use')!.addEventListener('click', () => {
+      sfx.click();
+      me = { strokes: d.strokes, name: d.name };
+      game = newSeed();
+      drawScreen({ kind: 'solo' }, d.strokes);
+    });
+    li.querySelector('.drop')!.addEventListener('click', () => {
+      sfx.click();
+      store.set(KEPT, JSON.stringify(kept().filter((x) => x.id !== k.id)));
+      li.remove();
+    });
+    rows.appendChild(li);
+  }
+}
+
 // ---------- Leaderboard ----------
 
 const BOARD_KINDS: Kind[] = ['quadruped', 'biped', 'centipede', 'hopper', 'flyer', 'roller', 'worm', 'jelly'];
@@ -526,9 +607,17 @@ async function leaderboard(kind?: Kind, highlight?: string) {
     for (const e of page.entries) {
       const li = document.createElement('li');
       if (e.id === highlight) li.className = 'me';
-      li.innerHTML = `<span class="pos mono">${e.rank}</span><span class="mini"></span><span class="who"><b>${esc(e.creature)}</b><small>${esc(e.creator)} · ${KINDS[e.kind].label}</small></span><span class="time mono">${(e.ms / 1000).toFixed(3)} s</span>`;
+      li.innerHTML = `<span class="pos mono">${e.rank}</span><span class="mini"></span><span class="who"><b>${esc(e.creature)}</b><small>${esc(e.creator)} · ${KINDS[e.kind].label}</small></span><span class="time mono">${(e.ms / 1000).toFixed(3)} s<button class="linkish mono vs" aria-label="Race ${esc(e.creature)} one on one">1v1 →</button></span>`;
       const d = fromCode(e.code);
-      if (d) li.querySelector('.mini')!.appendChild(thumb(d.strokes, 40));
+      if (d) {
+        li.querySelector('.mini')!.appendChild(thumb(d.strokes, 40));
+        // Challenge: draw (your last drawing to start from) and race it head to head.
+        li.querySelector('.vs')!.addEventListener('click', () => {
+          sfx.click();
+          game = newSeed();
+          drawScreen({ kind: 'challenge', foe: { id: 'foe', name: e.creature, strokes: d.strokes, anatomy: d.anatomy }, foeTime: e.ms / 1000 }, me?.strokes);
+        });
+      } else li.querySelector('.vs')!.remove();
       rows.appendChild(li);
     }
   } catch (e) {

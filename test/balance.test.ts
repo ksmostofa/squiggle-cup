@@ -66,14 +66,14 @@ const median = bTimes[bTimes.length >> 1];
 check(time(beginners['just a circle']) > median && time(beginners.squiggle) > median, `a bare circle (${time(beginners['just a circle']).toFixed(2)} s) and a squiggle (${time(beginners.squiggle).toFixed(2)} s) are slower than an ordinary drawing (${median.toFixed(2)} s)`);
 check(time(beginners['dog, face and tail']) < time(beginners['potato dog']), 'a face and a tail make a dog faster');
 {
-  // Fifty extra dots and dashes add no score; scribbling over it costs.
+  // Spots are a detail, once: fifty earn no more than five. Scribbling over it costs.
   const base = template(mulberry32(5), 'dog', 0.6).strokes;
   const r = mulberry32(8);
-  const spam: Stroke[] = Array.from({ length: 50 }, () => { const x = 200 + r() * 200, y = 230 + r() * 80; return { pts: [[x, y], [x + 6, y + 2]], color: INKS[0], w: 6 }; });
+  const spots = (n: number): Stroke[] => Array.from({ length: n }, () => { const x = 230 + r() * 120, y = 265 + r() * 40; return { pts: [[x, y], [x + 2, y + 1]], color: INKS[0], w: 6 }; });
   const scribble: Stroke = { pts: Array.from({ length: 60 }, (_, i) => [220 + (i % 2) * 140 + r() * 10, 240 + i * 1.2]), color: INKS[0], w: 6 };
-  const s0 = score(read(base)).total, s1 = score(read([...base, ...spam])).total, s2 = score(read([...base, scribble])).total;
-  check(s1 <= s0 + 0.03, `fifty extra dots earn nothing (${s0.toFixed(2)} → ${s1.toFixed(2)})`);
-  check(s2 < s0, `scribbling over it costs (${s0.toFixed(2)} → ${s2.toFixed(2)})`);
+  const s0 = score(read(base)).total, s5 = score(read([...base, ...spots(5)])).total, s50 = score(read([...base, ...spots(50)])).total, sx = score(read([...base, scribble])).total;
+  check(s50 <= s5 + 0.005, `fifty spots earn no more than five (${s0.toFixed(2)} → five ${s5.toFixed(2)}, fifty ${s50.toFixed(2)})`);
+  check(sx < s0, `scribbling over it costs (${s0.toFixed(2)} → ${sx.toFixed(2)})`);
 }
 
 // ---- The house is beatable ----

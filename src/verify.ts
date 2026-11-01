@@ -5,7 +5,7 @@ import { Race } from './race';
 // The leaderboard's referee. Rules and seasons version the board: whenever
 // the simulation or the scoring changes, RULES goes up, and old times stay on
 // their own board instead of being compared with times they can't match.
-export const RULES = 'r2';
+export const RULES = 'r3';
 export const SEASON = 's1';
 
 export interface Verified { kind: Kind; ms: number; score: number; strokes: string }

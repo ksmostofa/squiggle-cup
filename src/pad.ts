@@ -271,7 +271,8 @@ function hint(sc: Score): string {
   if (!sc.face.eyes) return 'Give it eyes.';
   if (!sc.face.forward) return 'Face it the way it runs →';
   if (!sc.face.mouth) return 'Add a mouth.';
-  const next = (['head', 'tail', 'crest', 'markings'] as Feature[]).find((f) => !sc.features.includes(f));
+  if (sc.line < 0.6) return 'Steadier lines score higher. Take your time.';
+  const next = (['head', 'tail', 'crest', 'pupils', 'feet', 'neck', 'markings'] as Feature[]).find((f) => !sc.features.includes(f));
   if (next) return `Try adding ${FEATURES[next]}.`;
-  return sc.form < 0.8 ? 'Tune its proportions for its kind.' : 'Beautifully made.';
+  return sc.form < 0.9 ? 'Tune its proportions for its kind.' : 'Beautifully made.';
 }

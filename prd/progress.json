@@ -1,17 +1,15 @@
 {
   "handoff": {
     "updated": "2026-11-02",
-    "summary": "Live on Workers (https://squiggle-cup.ksmostofa576.workers.dev/) and Cloudflare Pages (https://squigglecup.pages.dev/, classic Pages, same relay and leaderboard). This pass: preview runs the real Race engine (Codex); one stable creature scale for every racer and frame (flight drawn at 0.12 of true altitude, reach budgets checked by test/sim.test.ts); flat top-down sheet (no perspective); desktop standings in a side panel; scoring = movement form + craftsmanship (src/score.ts) with a shared 14.60 s ceiling for every kind (scripts/tune.ts, test/balance.test.ts); ten curated house families (src/templates.ts) dealt per game seed, kept on rematch/redraw, calibrated against test/beginners.ts; global leaderboard (server/board.ts, Board Durable Object on the game Worker) that re-races every post; rules r2, season s1. Vehicles (wheels, cars, jets, rockets) deferred to a separate mode: wheel physics is in body.ts, detection is off (analyze.ts WHEELS). Verified: npm test, layout/motion browser checks at 4 sizes, three-client room test passing on both live URLs, live leaderboard time matches local (14789 ms).",
+    "summary": "Live on Workers (https://squiggle-cup.ksmostofa576.workers.dev/) and classic Cloudflare Pages (https://squigglecup.pages.dev/); both share the relay and the leaderboard, and both pass the three-client room test. Scoring is strict (rules r3): craft = cohesion x line quality (steady strokes, closed loops) x (expression + detail over ten feature kinds), form tolerances tight; beginners median 0.48, the best house creature about 0.63, the shared 14.60 s ceiling needs an expert drawing. House skills [-0.4, -0.2, 0, 0.2]: an ordinary drawing places 2.8 of 5 and wins 10%. Added: 1v1 challenge of any leaderboard creature (repeat rematch/redraw), My creatures (every raced drawing kept on the device, reusable), pause/exit (Esc or II; solo pauses, rooms offer leave), every part of a drawing collides with the floor (no sinking; regression test), tilt-shift look (tilt 0.3, blurred margins), names beside creatures so creatures use the whole lane. Creatures stay plain ink: a 3D extrusion was tried and removed at the user's request.",
     "next": [
-      "In progress: much stricter scoring (line quality, tighter proportions, more detail kinds) so only skilled drawings near the ceiling; bump RULES to r3 and recalibrate the house.",
-      "In progress: 1v1 challenge any leaderboard entry, with repeated rematches.",
-      "Vehicle mode: wheels, cars, helicopters, jets, rockets, missiles (wheel physics already in src/body.ts).",
-      "Owner: decide whether to delete the stray Worker 'squigglecup' (squigglecup.ksmostofa576.workers.dev) that wrangler created during Pages setup; deletion needs owner approval.",
+      "Vehicle mode: wheels, cars, helicopters, jets, rockets, missiles (wheel physics already in src/body.ts; detection off in analyze.ts).",
+      "Accounts, if wanted: My creatures is per device today.",
+      "Owner: decide whether to delete the stray Worker 'squigglecup' (squigglecup.ksmostofa576.workers.dev, serves only the relay greeting) that wrangler created during Pages setup; deletion needs owner approval.",
       "Owner: run a three-person playtest on different devices/networks; automation used three isolated Chromium contexts on one machine",
       "Later: check Firefox/WebKit determinism and native phone share sheets"
     ],
     "open": [
-      "Leaderboard has one deploy-check entry ('Deploy check' by Squiggle Cup); it goes away with the r3 rules bump.",
       "Three contexts on one machine do not replace a three-person, different-network playtest",
       "Cross-browser/device determinism and native phone share-sheet behavior have not been verified",
       "Historic PRD sections and later milestones describe superseded concepts; current scope is the straight white-sheet race"

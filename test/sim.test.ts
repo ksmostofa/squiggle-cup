@@ -164,6 +164,33 @@ function watch(entries: Entry[], seed: number) {
   check(!bad.length, `hand-drawn snakes slither on the floor${bad.length ? ': ' + bad.join(', ') : ''}`);
 }
 
+// ---------- No part of a drawing sinks through the floor ----------
+{
+  // Two or three loops stacked: the body is one of them, and the others
+  // used to hang through the ground because only the body touched it.
+  const loop = (r: () => number, cx: number, cy: number, rx: number, ry: number): [number, number][] => {
+    const ph = r() * 6;
+    return Array.from({ length: 31 }, (_, i) => [cx + Math.cos((i / 30) * 6.2832) * rx * (1 + 0.1 * Math.sin(i * 3 + ph)), cy + Math.sin((i / 30) * 6.2832) * ry]);
+  };
+  let sunk = 0, worst = 0;
+  for (let seed = 0; seed < 60; seed++) {
+    const r = mulberry32(seed), top = 22 + r() * 28, bot = 25 + r() * 30;
+    const pts = [loop(r, 300, 240, top, top * (0.8 + r() * 0.3)), loop(r, 300 + (r() - 0.5) * 40, 240 + top + r() * bot, bot, bot * (0.6 + r() * 0.4))];
+    const a = analyze(canonical(pts.map((p) => ({ pts: p, color: INKS[0], w: 6 }))));
+    if (!a) continue;
+    const race = new Race([{ anatomy: a, name: '', kind: 'player' }]);
+    let lowest = Infinity;
+    while (!race.over) {
+      race.step();
+      const p = race.racers[0], b = p.body, s = p.s.size, [cx, cy] = a.center;
+      for (const part of a.parts) if (part.kind !== 'leg') for (const q of part.pts) lowest = Math.min(lowest, b.toWorld([(q[0] - cx) * s, -(q[1] - cy) * s])[1]);
+    }
+    worst = Math.min(worst, lowest);
+    if (lowest < -0.08) sunk++;
+  }
+  check(!sunk, `no part of a drawing sinks through the floor (deepest dip ${(-worst * 100).toFixed(0)} cm)`);
+}
+
 // ---------- Every house creature fits its lane at the one shared scale ----------
 {
   const over: string[] = [];

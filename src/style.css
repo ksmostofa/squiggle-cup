@@ -326,3 +326,18 @@ canvas.stage { display: block; width: 100%; height: 108px; }
 .foot-note { font-size: 11px; color: #6a707a; letter-spacing: 0.06em; margin: 10px 0 0; }
 .results .links { display: flex; flex-wrap: wrap; gap: 8px 20px; justify-content: center; }
 .toast .see-board { margin-left: 6px; }
+
+.board-rows .time { display: grid; justify-items: end; gap: 2px; }
+.board-rows .vs { font-size: 11px; }
+
+/* Home links and My creatures */
+.home-links { display: flex; flex-wrap: wrap; gap: 8px 22px; margin: 12px 0 0; }
+.row-actions { display: flex; gap: 12px; justify-content: flex-end; }
+.board-rows .row-actions button { font-size: 11px; }
+
+/* Pause: a corner button and a small menu over the race */
+.pause-btn { grid-area: 1 / 1; z-index: 4; align-self: start; justify-self: end; margin: 12px; width: 40px; height: 40px; border: 1px solid #15171c; background: rgba(252, 252, 250, 0.94); color: #15171c; font-size: 13px; letter-spacing: 0.08em; cursor: pointer; }
+.pause-menu { position: fixed; inset: 0; z-index: 10; display: grid; place-items: center; background: rgba(230, 229, 225, 0.72); backdrop-filter: blur(3px); padding: 16px; }
+.pause-menu[hidden] { display: none; }
+.pause-menu .card { display: grid; gap: 10px; width: min(320px, 100%); padding: 20px; border: 1px solid #15171c; background: #fcfcfa; }
+.pause-menu .kicker { margin: 0 0 4px; font-size: 11px; letter-spacing: 0.08em; color: #6a707a; }

@@ -206,7 +206,7 @@ const DRAW: Record<Family, Draw> = {
     if (has(0.45)) for (let i = 2; i < n - 2; i += 3) { const [tx, ty] = top[i], [, by] = bot[n - i]; p.path([[tx - 5, (ty * 2 + by) / 3], [tx + 4, (ty + by) / 2], [tx - 5, (ty + by * 2) / 3]], { n: 1 }); }
   },
   blob(p, r, s, has) {
-    const cx = 295, cy = range(r, 275, 295), rx = range(r, 88, 100), ry = range(r, 52, 62);
+    const cx = 295, cy = range(r, 275, 295), rx = range(r, 86, 96), ry = range(r, 55, 62);
     p.loop(cx, cy, rx, ry, { lumpy: 0.1 + 0.06 * (1 - s), n: 24 });
     if (has(0.85)) for (const ex of [0.05, 0.45]) { p.loop(cx + rx * ex, cy - ry * 0.3, 13, 15, { n: 12, w: THIN }); p.dot(cx + rx * ex + 4, cy - ry * 0.28); }
     if (has(0.65)) p.curve([cx, cy + ry * 0.15], [cx + rx * 0.25, cy + ry * 0.45], [cx + rx * 0.55, cy + ry * 0.15], { n: 6 });
@@ -216,7 +216,7 @@ const DRAW: Record<Family, Draw> = {
   crawler(p, r, s, has) {
     const cx = 280, cy = range(r, 285, 300), rx = range(r, 120, 138), ry = range(r, 26, 32);
     p.loop(cx, cy, rx, ry, { lumpy: 0.04 });
-    const n = pick(r, [6, 7, 8, 9, 10]), L = range(r, 34, 48), v = 0.2 * (1 - s);
+    const n = pick(r, [7, 8, 9, 10]), L = range(r, 34, 48), v = 0.2 * (1 - s);
     for (let i = 0; i < n; i++) leg(p, cx - rx * 0.78 + (1.56 * rx * i) / (n - 1), cy + ry * 0.85, L * (1 + range(r, -v, v)), range(r, -4, 10), 0.1);
     const hr = range(r, 22, 27), hx = cx + rx + hr * 0.55, hy = cy - ry * 0.3;
     if (has(0.75)) {
@@ -233,7 +233,7 @@ export interface Template { family: Family; skill: number; strokes: Stroke[] }
 
 // One house creature: a family, a seed and a skill level.
 export function template(rng: Rng, family: Family, skill: number): Template {
-  const s = Math.max(0, Math.min(1, skill));
+  const s = Math.max(-0.5, Math.min(1, skill)); // below 0: a rushed, shaky first go
   const ink = pick(rng, INK);
   const pen = new Pen(rng, ink, rng() < 0.25 ? THICK : THIN, 1 + 2.4 * (1 - s));
   // Careful drawers include more of the extras; each detail has its own odds.
@@ -246,7 +246,7 @@ export function template(rng: Rng, family: Family, skill: number): Template {
 // Four house creatures for a game: different families, one at each skill
 // level. The levels are set against ordinary first drawings (test/beginners.ts)
 // so a typical beginner finishes mid-pack and a careful drawing can win.
-export const HOUSE_SKILLS = [0, 0.12, 0.25, 0.4];
+export const HOUSE_SKILLS = [-0.4, -0.2, 0, 0.2];
 export function lineup(seed: number): Template[] {
   const rng = mulberry32(seed);
   const fams = FAMILIES.slice();

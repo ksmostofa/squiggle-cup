@@ -146,6 +146,7 @@ function shadow(ctx: CanvasRenderingContext2D, x: number, y: number, rx: number,
 // ---------- The race board ----------
 
 const LANE_Z = 1.25; // metres between lane lines
+const TILT = 0.3;    // how much the far lanes shrink: 1 / (1 + TILT), the miniature's tilt
 // Height above the ground is drawn true up to standing height; anything above
 // that (flight, hops) at ALT of its true size, the same for every creature:
 // a flyer lifts off its shadow and beats its wings, and headroom for its
@@ -227,9 +228,12 @@ export class Renderer {
     const laneStep = H / (N + 1.1);
     const yFront = H - 0.5 * laneStep, yBack = 0.6 * laneStep;
     const s0 = W / this.viewW;
-    // Seen straight down, like a drawing on the desk: every lane the same
-    // height, every line square. (A tilted view made the far lanes shrink.)
-    const P = (X: number, Z: number): Pt => [W / 2 + (X - this.camX) * s0, yFront + ((yBack - yFront) * Z) / Zmax];
+    // Seen at a slight tilt, like a photo of a model on the desk: lines
+    // converge and the far lanes shrink a little. Creatures don't: they all
+    // share the back lane's scale (below).
+    const yH = (yBack * (1 + TILT) - yFront) / TILT;
+    const f = (Z: number) => 1 / (1 + (TILT * Z) / Zmax);
+    const P = (X: number, Z: number): Pt => [W / 2 + (X - this.camX) * s0 * f(Z), yH + (yFront - yH) * f(Z)];
     // Put feet near the lower edge of each lane, leaving space above for
     // the creature and its own header. Lane 0 is at the back.
     const laneZ = (i: number) => (N - 1 - i + 0.12) * LANE_Z;
@@ -330,13 +334,13 @@ export class Renderer {
     label(FINISH + 0.5, Zf + 0.62, 'FINISH', 0.26, 600, MONO, INK, 'left');
 
     // Every racer, yours included, is drawn at one scale for the whole race:
-    // sized so the tallest pose any creature reaches fits the back (smallest)
-    // lane under its reserved text row. Nothing about a pose, a wingbeat or
-    // the camera changes it; only the canvas size does.
-    const nameRow = compact ? 0 : 22 * dpr;
+    // sized so the tallest pose any creature reaches fills the back (smallest)
+    // lane. Names sit beside the creature, not above it, so the whole lane
+    // height is the creature's. Nothing about a pose, a wingbeat or the
+    // camera changes the scale; only the canvas size does.
     const laneH = P(0, (N - 1) * LANE_Z)[1] - P(0, N * LANE_Z)[1];
-    const k = Math.max(1, (laneH - nameRow - 4 * dpr) / (REACH_UP + REACH_DOWN));
-    const tags: { x: number; y: number; name: string; mine: boolean; idx: number; done: string | null }[] = [];
+    const k = Math.max(1, (laneH - 4 * dpr) / (REACH_UP + REACH_DOWN));
+    const tags: { x: number; left: number; right: number; y: number; name: string; mine: boolean; idx: number; done: string | null }[] = [];
     const order = race.standings();
     let myTop = Infinity;
     for (let i = 0; i < N; i++) {
@@ -351,7 +355,10 @@ export class Renderer {
       shadow(c, gx, gy, b.length * 0.42 * k, b.length * 0.42 * k * 0.22, b.y + b.bottom);
       paintCreature(c, pose, gx, gy - y * k, k);
       myTop = Math.min(myTop, gy + (creatureBounds(pose).top - y) * k);
-      tags.push({ x: gx, y: compact ? (laneTop + laneBottom) / 2 + 4 * dpr : laneTop + 16 * dpr, name: r.name, mine: r === me, idx: i,
+      // How far the drawing reaches either side of its centre, padded for wingbeats.
+      const a = r.anatomy, reach = r.s.size * k * 1.1, pad = 0.08 * k;
+      tags.push({ x: gx, left: gx - (a.center[0] - a.box.x0) * reach - pad, right: gx + (a.box.x1 - a.center[0]) * reach + pad,
+        y: compact ? (laneTop + laneBottom) / 2 + 4 * dpr : laneTop + 16 * dpr, name: r.name, mine: r === me, idx: i,
         done: r.finishTime === null ? null : `${PLACE[order.indexOf(r)]}  ${r.finishTime.toFixed(2)} s` });
     }
 
@@ -382,7 +389,7 @@ export class Renderer {
       const s2 = this.sm2ctx;
       s2.setTransform(1, 0, 0, 1, 0, 0);
       s2.clearRect(0, 0, sw, sh);
-      s2.filter = 'blur(1.6px)';
+      s2.filter = 'blur(2.4px)';
       s2.drawImage(this.small, 0, 0);
       s2.filter = 'none';
       blurred = this.small2;
@@ -391,9 +398,11 @@ export class Renderer {
     out.imageSmoothingQuality = 'high';
     out.drawImage(blurred, 0, 0, W, H);
     // Mask the sharp copy to the focus band, then lay it on top.
-    const bandTop = Math.min(P(0, Zmax)[1] - H * 0.05, myTop - H * 0.02);
-    const bandBot = P(0, 0)[1] + H * 0.035;
-    const feather = H * 0.13;
+    // Sharp across the lanes only: the margins, the desk and the far edge of
+    // the sheet go soft, as in a tilt-shift photo of a miniature.
+    const bandTop = Math.min(P(0, Zmax)[1], myTop) - H * 0.01;
+    const bandBot = P(0, 0)[1] + H * 0.01;
+    const feather = H * 0.07;
     c.globalCompositeOperation = 'destination-in';
     const g = c.createLinearGradient(0, bandTop - feather, 0, bandBot + feather);
     const span = bandBot - bandTop + 2 * feather;
@@ -408,7 +417,8 @@ export class Renderer {
     out.drawImage(this.sharp, 0, 0);
 
     // Screen-sized text stays readable on phones. Numbers, names and finish
-    // times have separate horizontal slots and never share a creature's area.
+    // times have separate slots; a name goes behind its creature, or ahead of
+    // it when there's no room behind, never over it.
     const nameLeft = 46 * dpr, nameRight = W - Math.min(120 * dpr, W * 0.3) - 16 * dpr;
     out.textBaseline = 'alphabetic';
     for (const t of tags) {
@@ -423,18 +433,26 @@ export class Renderer {
       // Short landscape screens put full names and times in the side panel.
       if (compact) continue;
       out.font = `${t.mine ? 700 : 600} ${13 * dpr}px ${SANS}`;
-      const limit = Math.max(1, Math.min(260 * dpr, nameRight - nameLeft));
-      let name = t.name;
-      if (out.measureText(name).width > limit) {
-        const chars = Array.from(name);
-        while (chars.length && out.measureText(chars.join('') + '…').width > limit) chars.pop();
-        name = chars.join('') + '…';
+      // Behind the creature if it fits, else whichever side has more room,
+      // shortened to fit there. The standings always have the full name.
+      const gapX = 10 * dpr;
+      const behind = t.left - gapX - nameLeft, ahead = nameRight - (t.right + gapX);
+      const full = out.measureText(t.name).width;
+      const side = full <= behind || behind >= ahead ? 'behind' : 'ahead';
+      const limit = Math.min(260 * dpr, side === 'behind' ? behind : ahead);
+      if (limit >= 24 * dpr) {
+        let name = t.name;
+        if (full > limit) {
+          const chars = Array.from(name);
+          while (chars.length && out.measureText(chars.join('') + '…').width > limit) chars.pop();
+          name = chars.join('') + '…';
+        }
+        const width = out.measureText(name).width;
+        const x = side === 'behind' ? t.left - gapX - width : t.right + gapX;
+        out.fillStyle = PAPER; out.fillRect(x - 3 * dpr, t.y - 15 * dpr, width + 6 * dpr, 21 * dpr);
+        out.textAlign = 'left'; out.fillStyle = color;
+        out.fillText(name, x, t.y);
       }
-      const width = out.measureText(name).width;
-      const x = Math.max(nameLeft, Math.min(t.x - width / 2, nameRight - width));
-      out.fillStyle = PAPER; out.fillRect(x - 3 * dpr, t.y - 15 * dpr, width + 6 * dpr, 21 * dpr);
-      out.textAlign = 'left'; out.fillStyle = color;
-      out.fillText(name, x, t.y);
       if (t.done) {
         out.font = `500 ${11.5 * dpr}px ${MONO}`;
         const timeWidth = out.measureText(t.done).width;
