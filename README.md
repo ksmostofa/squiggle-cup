@@ -7,7 +7,7 @@
 A multiplayer drawing race. Sketch a creature in 30 seconds, then watch it run.<br>
 The shape decides the motion: legs trot, wings flap, snakes slither.
 
-[**▶ Play now**](https://squiggle-cup.ksmostofa576.workers.dev/) · [Mirror](https://squigglecup.pages.dev/)
+[**▶ Play now**](https://squigglecup.pages.dev/) · [Worker mirror](https://squiggle-cup.ksmostofa576.workers.dev/)
 
 <img src="public/og.png" alt="Squiggle Cup race" width="760">
 

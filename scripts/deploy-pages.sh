@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
-# Deploys a copy of the game's frontend to Cloudflare Pages. The Workers
-# deployment (npm run deploy) stays the primary site and keeps running; this
-# copy uses the same room relay and the same leaderboard, so players on
+# Deploys the game's public frontend to Cloudflare Pages. The Workers
+# deployment (npm run deploy) keeps the backend and mirror running; the Pages
+# site uses the same room relay and the same leaderboard, so players on
 # either address can share rooms and boards. Needs `npx wrangler login` once.
 #
 # Pages deployment config. `wrangler pages deploy` doesn't take a config file,
