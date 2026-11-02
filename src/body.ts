@@ -13,6 +13,7 @@ import type { Course } from './course';
 //   one leg – kangaroo hops: a crouch, a launch, a soft landing
 //   wings – lift in proportion to wing area holds a cruising height; a heavy
 //           body with small wings can't stay up
+//   wheels – the body rides level at axle height, driven through the tyres
 //   round bodies roll; long or legless ones slither on belly scales; blobs ooze
 // Uses only + - * / and sqrt (dsin, dcos, atan2 are polynomial), so a race
 // replays identically on every device.
@@ -33,6 +34,7 @@ export interface Leg {
 }
 
 export interface Wing { root: Pt; span: number }
+export interface Wheel { hub: Pt; r: number }
 export interface BodyTuning { kind: Kind; vTarget: number }
 
 export class Body {
@@ -44,6 +46,9 @@ export class Body {
   rad: number;       // contact radius of each hull point
   legs: Leg[] = [];
   wings: Wing[] = [];
+  wheels: Wheel[] = [];
+  roll = 0;          // wheels: distance rolled, for drawing them turn
+  axle = 0;          // wheels: centre-of-mass height when they touch the floor
   lift = 0;          // wings: the most lift they can make, newtons
   flap = 0;          // wing beat phase
   flapAmp = 0;
@@ -85,6 +90,19 @@ export class Body {
     this.m = Math.max(0.4, bodyArea * 40 + limbInk * 0.8);
     const r2 = this.hull.reduce((s, p) => s + p[0] * p[0] + p[1] * p[1], 0) / this.hull.length;
     this.I = this.m * Math.max(0.01, r2 * 0.55);
+    // The rest of the drawing touches the floor too: a second loop under the
+    // body stands on it, a low tail drags along it, a head on a body that
+    // pitches forward meets the floor instead of going through it. (Legs hold
+    // themselves up, wings are in the air, eyes are inside.) A roller turns,
+    // so anything sticking out of it bumps the floor as it rolls; it still
+    // rolls on its body's radius.
+    for (const p of a.parts) {
+      if (p === a.body || p.kind === 'leg' || p.kind === 'wing' || p.kind === 'eye' || p.kind === 'wheel' || p.pts.length < 2) continue;
+      const pts = p.pts.map(local);
+      if (tuning.kind === 'roller' && Math.max(...pts.map((q) => Math.sqrt(q[0] * q[0] + q[1] * q[1]))) <= this.R) continue;
+      this.hull.push(...resample(rdp(pts, 0.02), false, 16));
+    }
+    this.bottom = Math.min(...this.hull.map((p) => p[1]));
 
     for (const p of a.parts) {
       if (p.kind === 'leg') {
@@ -96,6 +114,9 @@ export class Body {
       } else if (p.kind === 'wing') {
         const root = local(p.pivot);
         this.wings.push({ root, span: Math.sqrt(p.pts.map(local).reduce((s, q) => Math.max(s, dist2(q, root)), 0)) });
+      } else if (p.kind === 'wheel') {
+        const hub = local(p.pivot);
+        this.wheels.push({ hub, r: Math.sqrt(p.pts.map(local).reduce((s, q) => s + dist2(q, hub), 0) / p.pts.length) });
       }
     }
     this.legs.sort((p, q) => p.order - q.order).forEach((l, i) => { l.order = i; });
@@ -111,6 +132,8 @@ export class Body {
     // (Standing, the centre sits at ride − hipY, so the belly clears by ride − hipY + bottom.)
     this.crawl = this.legs.length > 0 && this.ride - this.hipY + this.bottom < 0.02;
     this.tailDamp = 1 + 0.5 * Math.min(2, a.tails);
+    if (this.legs.length) this.wheels = [];
+    this.axle = this.wheels.reduce((m, wh) => Math.max(m, wh.r - wh.hub[1]), 0);
   }
 
   toWorld(p: Pt): Pt {
@@ -124,7 +147,7 @@ export class Body {
   place(x: number, course: Course) {
     this.x = x;
     const g = course.ground(x);
-    this.y = this.walker ? g + this.ride - this.hipY : g - this.bottom + this.rad;
+    this.y = this.walker ? g + this.ride - this.hipY : this.wheels.length ? g + this.axle : g - this.bottom + this.rad;
     for (const l of this.legs) {
       const h = this.toWorld(l.hip);
       l.foot = [h[0], this.walker ? course.ground(h[0]) : h[1] - l.L];
@@ -218,13 +241,31 @@ export class Body {
       for (const l of this.legs) {
         const hw = this.toWorld(l.hip);
         const a2 = 0.5 * dsin(this.gait + l.order * 1.9);
-        l.foot = [hw[0] + l.L * dsin(a2), hw[1] - l.L * dcos(a2)];
-        l.len = l.L;
+        const fx = hw[0] + l.L * dsin(a2);
+        l.foot = [fx, Math.max(course.ground(fx), hw[1] - l.L * dcos(a2))]; // paddling feet stay on the floor, not in it
+        l.len = Math.sqrt(dist2(hw, l.foot));
       }
     }
 
+    // ---- Driving on wheels ----
+    if (this.wheels.length) {
+      // Suspension holds the axles at wheel height; drive is limited by grip.
+      const hh = this.y - course.ground(this.x);
+      standing = hh < this.axle * 1.08;
+      if (standing) {
+        const om = 2 * Math.sqrt(G / Math.max(0.15, this.axle)) + 6;
+        const up = clamp(this.m * (G + om * om * (this.axle - hh) - 2 * om * this.vy), 0, 3 * this.m * G);
+        fy += up;
+        fx += clamp(pace, -MU * up, MU * up);
+        support += up;
+        upright += 0.45 * up * this.length + this.I * 30;
+      }
+      this.roll += this.vx * h;
+      this.gait += h * (2 + 3 * Math.abs(this.vx));
+    }
+
     // ---- Slithering, oozing, crawling ----
-    if (contacts && !this.walker && kind !== 'roller' && !flying) {
+    if (contacts && !this.walker && !this.wheels.length && kind !== 'roller' && !flying) {
       // Waves along the body push back against the grippy scales. The wave
       // runs tail-ward a little faster than the body goes forward, so each
       // bit of body follows the one ahead of it (gait is the wave phase).
@@ -288,7 +329,7 @@ export class Body {
     } else this.airTime += h;
     this.touching = any;
     this.squash += (1 - this.squash) * Math.min(1, h * 10);
-    if (!this.walker && !flying && kind !== 'roller' && contacts) this.squash = 1 + (kind === 'jelly' ? 0.07 : 0.02) * dsin(this.gait * (kind === 'jelly' ? 0.6 : 1));
+    if (!this.walker && !this.wheels.length && !flying && kind !== 'roller' && contacts) this.squash = 1 + (kind === 'jelly' ? 0.07 : 0.02) * dsin(this.gait * (kind === 'jelly' ? 0.6 : 1));
   }
 
   // Feet: planted feet stay put; a foot left behind (or too far ahead) steps

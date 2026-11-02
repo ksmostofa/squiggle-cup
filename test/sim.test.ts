@@ -3,7 +3,10 @@ import { RIVAL_KINDS, rivalDrawing } from '../src/bots';
 import { INKS } from '../src/course';
 import { decode, encode } from '../src/encode';
 import { type Entry, Race } from '../src/race';
+import { canonical } from '../src/drawing';
+import { REACH_DOWN, REACH_UP, creatureBounds, shownHeight } from '../src/render';
 import { mulberry32 } from '../src/rng';
+import { FAMILIES, template } from '../src/templates';
 import { NOT_WINGS, WINGS, strokes } from './fixtures';
 
 let failed = 0;
@@ -151,13 +154,59 @@ function watch(entries: Entry[], seed: number) {
   const bad: string[] = [];
   for (const [name, s] of Object.entries(snakes)) {
     const a = analyze(s)!;
-    const r = new Race([{ anatomy: a, name, kind: 'player' }]);
+    // Physics only: a fixed score, so how well it's drawn doesn't move the bounds.
+    const r = new Race([{ anatomy: a, name, kind: 'player', score: 0.5 }]);
     let maxY = 0;
     while (!r.over) { r.step(); maxY = Math.max(maxY, r.racers[0].body.y); }
     const t = r.racers[0].finishTime ?? Infinity;
     if (t < 13 || t > 18 || maxY > 0.3) bad.push(`${name} ${t.toFixed(2)} s, up to ${maxY.toFixed(2)} m`);
   }
   check(!bad.length, `hand-drawn snakes slither on the floor${bad.length ? ': ' + bad.join(', ') : ''}`);
+}
+
+// ---------- No part of a drawing sinks through the floor ----------
+{
+  // Two or three loops stacked: the body is one of them, and the others
+  // used to hang through the ground because only the body touched it.
+  const loop = (r: () => number, cx: number, cy: number, rx: number, ry: number): [number, number][] => {
+    const ph = r() * 6;
+    return Array.from({ length: 31 }, (_, i) => [cx + Math.cos((i / 30) * 6.2832) * rx * (1 + 0.1 * Math.sin(i * 3 + ph)), cy + Math.sin((i / 30) * 6.2832) * ry]);
+  };
+  let sunk = 0, worst = 0;
+  for (let seed = 0; seed < 60; seed++) {
+    const r = mulberry32(seed), top = 22 + r() * 28, bot = 25 + r() * 30;
+    const pts = [loop(r, 300, 240, top, top * (0.8 + r() * 0.3)), loop(r, 300 + (r() - 0.5) * 40, 240 + top + r() * bot, bot, bot * (0.6 + r() * 0.4))];
+    const a = analyze(canonical(pts.map((p) => ({ pts: p, color: INKS[0], w: 6 }))));
+    if (!a) continue;
+    const race = new Race([{ anatomy: a, name: '', kind: 'player' }]);
+    let lowest = Infinity;
+    while (!race.over) {
+      race.step();
+      const p = race.racers[0], b = p.body, s = p.s.size, [cx, cy] = a.center;
+      for (const part of a.parts) if (part.kind !== 'leg') for (const q of part.pts) lowest = Math.min(lowest, b.toWorld([(q[0] - cx) * s, -(q[1] - cy) * s])[1]);
+    }
+    worst = Math.min(worst, lowest);
+    if (lowest < -0.08) sunk++;
+  }
+  check(!sunk, `no part of a drawing sinks through the floor (deepest dip ${(-worst * 100).toFixed(0)} cm)`);
+}
+
+// ---------- Every house creature fits its lane at the one shared scale ----------
+{
+  const over: string[] = [];
+  for (const fam of FAMILIES) for (let i = 0; i < 4; i++) {
+    const a = analyze(canonical(template(mulberry32(300 + i), fam, i / 3).strokes))!;
+    const r = new Race([{ anatomy: a, name: '', kind: 'player' }]);
+    let up = 0, down = 0;
+    while (!r.over) {
+      r.step();
+      const p = r.racers[0], y = shownHeight(p.body.y, p.restY);
+      const b = creatureBounds({ body: p.body, anatomy: p.anatomy, size: p.s.size, t: r.time, drop: p.body.y - y });
+      up = Math.max(up, y - b.top); down = Math.max(down, b.bottom - y);
+    }
+    if (up > REACH_UP || down > REACH_DOWN) over.push(`${fam} ${i}: ${up.toFixed(2)} up, ${down.toFixed(2)} down`);
+  }
+  check(!over.length, `every house creature stays within its lane (plus SPILL into the lane behind) through a whole race${over.length ? ': ' + over.join(', ') : ''}`);
 }
 
 if (failed) { console.log(`${failed} failed`); process.exit(1); }

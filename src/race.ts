@@ -24,10 +24,11 @@ const GAIN = 0.26, MISS = 0.15, DECAY = 0.28; // groove per hit, per miss, lost 
 // Seconds per beat, matched to how each kind moves.
 export const BEAT: Record<Anatomy['kind'], number> = {
   biped: 0.42, quadruped: 0.5, centipede: 0.36, hopper: 0.6, flyer: 0.5,
-  roller: 0.46, worm: 0.56, jelly: 0.6, scribble: 0.4,
+  roller: 0.46, wheeled: 0.46, worm: 0.56, jelly: 0.6, scribble: 0.4,
 };
 
-export interface Entry { anatomy: Anatomy; name: string; kind: 'player' | 'rival'; id?: string; bot?: boolean; taps?: number[] }
+// score: calibration and tests only; races always score the drawing itself.
+export interface Entry { anatomy: Anatomy; name: string; kind: 'player' | 'rival'; id?: string; bot?: boolean; taps?: number[]; score?: number }
 
 export type RaceEventType = 'start' | 'finish' | 'photo' | 'hit' | 'miss';
 export interface RaceEvent { t: number; type: RaceEventType; who: number; value?: number }
@@ -45,9 +46,10 @@ export class Racer {
   queue: number[] = []; // taps not yet applied, sorted
   lastBeat = -1;
   wasUpside = false;
+  restY = 0;       // standing height on the line, for drawing; never read by the sim
 
-  constructor(public anatomy: Anatomy, public name: string, public idx: number, public kind: Entry['kind'], public id?: string, public bot = false) {
-    this.s = stats(anatomy);
+  constructor(public anatomy: Anatomy, public name: string, public idx: number, public kind: Entry['kind'], public id?: string, public bot = false, score?: number) {
+    this.s = stats(anatomy, score);
     if (bot) this.groove = BOT_GROOVE;
     this.body = new Body(anatomy, this.s.size, { kind: anatomy.kind, vTarget: this.s.vTarget });
   }
@@ -78,8 +80,9 @@ export class Race {
   constructor(public entries: Entry[], public seed = 0) {
     this.course = flatCourse();
     this.racers = entries.map((e, i) => {
-      const r = new Racer(e.anatomy, e.name, i, e.kind, e.id, e.bot);
+      const r = new Racer(e.anatomy, e.name, i, e.kind, e.id, e.bot, e.score);
       r.body.place(0, this.course);
+      r.restY = r.body.y;
       if (e.taps) r.queue = e.taps.slice().sort((a, b) => a - b);
       return r;
     });

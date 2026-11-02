@@ -1,6 +1,8 @@
-# Game Worker. Keep this separate from wrangler.toml (the room relay).
+# Game Worker: the game, same-origin rooms and the leaderboard.
+# Keep this separate from wrangler.toml (the room relay). The Pages copy of
+# the game (wrangler.pages.toml) calls this Worker's /api/board.
 name = "squiggle-cup"
-main = "worker/index.mjs"
+main = "worker/site.mjs"
 compatibility_date = "2026-06-01"
 
 [assets]
@@ -12,6 +14,14 @@ binding = "ASSETS"
 name = "LOBBY"
 class_name = "Lobby"
 
+[[durable_objects.bindings]]
+name = "BOARD"
+class_name = "Board"
+
 [[migrations]]
 tag = "v1"
 new_sqlite_classes = ["Lobby"]
+
+[[migrations]]
+tag = "v2"
+new_sqlite_classes = ["Board"]

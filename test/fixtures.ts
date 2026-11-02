@@ -6,11 +6,11 @@ import { type Rng, mulberry32, range } from '../src/rng';
 // lumpy ellipses, the way people actually draw. Each fixture is a function of
 // a seed, so tests can draw the same idea many slightly different ways.
 
-type Draw = (r: Rng) => Pt[][];
+export type Draw = (r: Rng) => Pt[][];
 
 const C = Math.cos, S = Math.sin;
 
-function ell(r: Rng, cx: number, cy: number, rx: number, ry: number, a0 = 0, a1 = Math.PI * 2, n = 28): Pt[] {
+export function ell(r: Rng, cx: number, cy: number, rx: number, ry: number, a0 = 0, a1 = Math.PI * 2, n = 28): Pt[] {
   const out: Pt[] = [];
   for (let i = 0; i <= n; i++) {
     const a = a0 + ((a1 - a0) * i) / n, k = 1 + range(r, -0.04, 0.04);
@@ -19,7 +19,7 @@ function ell(r: Rng, cx: number, cy: number, rx: number, ry: number, a0 = 0, a1 
   return out;
 }
 
-function ln(r: Rng, pts: Pt[], n = 5): Pt[] {
+export function ln(r: Rng, pts: Pt[], n = 5): Pt[] {
   const out: Pt[] = [];
   for (let i = 1; i < pts.length; i++) {
     const [a, b] = [pts[i - 1], pts[i]];
@@ -31,7 +31,7 @@ function ln(r: Rng, pts: Pt[], n = 5): Pt[] {
   return out;
 }
 
-const eye = (x: number, y: number): Pt[] => [[x, y], [x + 1, y + 1]];
+export const eye = (x: number, y: number): Pt[] => [[x, y], [x + 1, y + 1]];
 // Body at (300, 320), 140 × 90, facing right.
 const BODY = (r: Rng) => ell(r, 300, 320, 70, 45);
 const birdLegs = (r: Rng) => [ln(r, [[285, 362], [280, 430]]), ln(r, [[315, 362], [322, 430]])];

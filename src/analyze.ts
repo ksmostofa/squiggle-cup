@@ -6,18 +6,18 @@ import { type Pt, area, bbox, centroid, dist, distToPolyline, pointInPoly, polyL
 
 export interface Stroke { pts: Pt[]; color: string; w: number }
 
-export type PartKind = 'body' | 'leg' | 'wing' | 'tail' | 'eye' | 'decor';
+export type PartKind = 'body' | 'head' | 'leg' | 'wing' | 'tail' | 'wheel' | 'eye' | 'decor';
 export interface Part {
   kind: PartKind;
   pts: Pt[];
   color: string;
   w: number;
-  pivot: Pt;     // where it hinges: hip for legs, root for wings and tails
+  pivot: Pt;     // where it hinges: hip for legs, root for wings and tails, hub for wheels
   side: number;  // wings and tails: -1 left of the body, 1 right
   order: number; // legs: 0 = rearmost
 }
 
-export type Kind = 'biped' | 'quadruped' | 'centipede' | 'hopper' | 'flyer' | 'roller' | 'worm' | 'jelly' | 'scribble';
+export type Kind = 'biped' | 'quadruped' | 'centipede' | 'hopper' | 'flyer' | 'roller' | 'wheeled' | 'worm' | 'jelly' | 'scribble';
 
 export interface Anatomy {
   kind: Kind;
@@ -30,12 +30,17 @@ export interface Anatomy {
   legs: number;
   wings: number;
   tails: number;
+  wheels: number;
+  heads: number;
   roundness: number;      // of the body, 0..1 (1 = circle)
   aspect: number;         // drawing width / height
   crossings: number;
   legLen: number;         // mean leg height as a fraction of drawing height
   ink: number;            // total stroke length, pad px
 }
+
+// Wheel detection, for the vehicle mode to come. Off: creatures only for now.
+export const WHEELS = false;
 
 export function isClosed(p: Pt[], len: number) {
   return p.length >= 4 && len >= 50 && dist(p[0], p[p.length - 1]) <= Math.max(24, len * 0.16);
@@ -71,7 +76,7 @@ export function analyze(strokes: Stroke[]): Anatomy | null {
   const nearestTo = (pts: Pt[], q: (p: Pt) => number) => pts.reduce((a, p) => (q(p) < q(a) ? p : a), pts[0]);
 
   const body: Part = { kind: 'body', pts: bodyIt.s.pts, color: bodyIt.s.color, w: bodyIt.s.w, pivot: center, side: 0, order: 0 };
-  const legs: Part[] = [], wings: Part[] = [], tails: Part[] = [], decor: Part[] = [], dots: Part[] = [];
+  const legs: Part[] = [], wings: Part[] = [], tails: Part[] = [], wheels: Part[] = [], headParts: Part[] = [], decor: Part[] = [], dots: Part[] = [];
   const endWings: Part[] = [];
   const eyes: Anatomy['eyes'] = [];
   // Small round loops: heads, which tell a neck from a raised wing.
@@ -84,14 +89,38 @@ export function analyze(strokes: Stroke[]): Anatomy | null {
     const c: Pt = [b.x0 + b.w / 2, b.y0 + b.h / 2];
     const part = (kind: PartKind, pts = s.pts, pivot: Pt = pts[0], side = 0): Part => ({ kind, pts, color: s.color, w: s.w, pivot, side, order: 0 });
 
+    // Wheels: round loops along the bottom of the body, too big to be eyes.
+    // Only in the vehicle mode (not yet open); creatures read loops as before.
+    if (WHEELS && it.closed && roundOf(s.pts, len) >= 0.6 && Math.max(b.w, b.h) >= 0.12 * M && Math.max(b.w, b.h) <= 0.75 * Math.max(bb.w, bb.h)
+      && c[1] >= bb.y1 - 0.3 * bb.h && b.y1 >= bb.y1 && c[0] > bb.x0 && c[0] < bb.x1) {
+      wheels.push(part('wheel', s.pts, c));
+      return;
+    }
+
     // Dots and little loops inside the body are eyes. They stay exactly as drawn.
     const small = Math.max(b.w, b.h) < Math.max(18, 0.12 * M);
-    if (small && (len < 0.07 * M || it.closed) && (!closed || pointInPoly(c, bodyPoly))) {
+    const inHead = heads.some((h) => h !== it && pointInPoly(c, h.s.pts));
+    if (small && (len < 0.07 * M || it.closed) && (!closed || pointInPoly(c, bodyPoly) || inHead)) {
       eyes.push({ c, r: Math.max(b.w, b.h) / 2 });
       dots.push(part('eye'));
       return;
     }
     if (len < 0.07 * M) { decor.push(part('decor')); return; }
+
+    // A head: a roundish loop off the front or back of the body (or a round
+    // one on top of it), on or near it. It stays put, and the eyes and mouth
+    // drawn in it stay with it.
+    const S0 = Math.max(bb.w, bb.h);
+    const atEnd = c[0] > bb.x1 - 0.2 * bb.w || c[0] < bb.x0 + 0.2 * bb.w;
+    const onTop = c[1] < bb.y0 && c[0] > bb.x0 && c[0] < bb.x1 && Math.max(b.w, b.h) < 1.4 * Math.min(b.w, b.h);
+    if (it.closed && roundOf(s.pts, len) >= 0.45 && Math.max(b.w, b.h) >= 0.15 * S0 && Math.max(b.w, b.h) <= 0.9 * S0
+      && !(closed && pointInPoly(c, bodyPoly)) && (atEnd || onTop) && c[1] < bb.y1
+      && nearBody(nearestTo(s.pts, nearBody)) < 0.3 * M) {
+      headParts.push(part('head', s.pts, c));
+      return;
+    }
+    // Anything drawn inside a head (a mouth, a nose) stays with it.
+    if (inHead) { decor.push(part('decor')); return; }
 
     // A long flat open line beside an open body is more body (a snake's other side).
     const bodyLine = !it.closed && b.w > 0.5 * W && b.w > 2.5 * Math.max(1, b.h);
@@ -110,6 +139,14 @@ export function analyze(strokes: Stroke[]): Anatomy | null {
       }
     }
 
+    // Lines drawn on the body (a mouth, stripes, spots) are markings: they
+    // ride along with it rather than flapping as appendages.
+    // (A big loop inside the body is left to be read as a folded wing.)
+    if (closed && (!it.closed || Math.max(b.w, b.h) < 0.4 * Math.max(bb.w, bb.h)) && s.pts.filter((p) => pointInPoly(p, bodyPoly)).length >= 0.9 * s.pts.length) {
+      decor.push(part('decor'));
+      return;
+    }
+
     const sticksOut = b.x0 < bb.x0 - 0.12 * bb.w || b.x1 > bb.x1 + 0.12 * bb.w;
     const side = c[0] < center[0] ? -1 : 1;
     const round = it.closed ? roundOf(s.pts, len) : 0;
@@ -124,12 +161,15 @@ export function analyze(strokes: Stroke[]): Anatomy | null {
     const rise = root[1] - b.y0;
     const rootMid = root[0] > bb.x0 + 0.12 * bb.w && root[0] < bb.x1 - 0.12 * bb.w;
     const rootEnd = !rootMid;
-    const neck = heads.some((h) => h !== it && dist(h.c, [b.x0 + b.w / 2, b.y0]) < 0.14 * M);
+    const touchesHead = (h: typeof heads[number]) => distToPolyline(s.pts[0], h.s.pts, true) < 0.06 * M || distToPolyline(s.pts[s.pts.length - 1], h.s.pts, true) < 0.06 * M;
+    const neck = heads.some((h) => h !== it && (dist(h.c, [b.x0 + b.w / 2, b.y0]) < 0.14 * M || (!it.closed && touchesHead(h))));
+    // A line from the body up to a head is its neck: it holds still.
+    if (!it.closed && neck && attached) { decor.push(part('decor')); return; }
     const big = Math.max(b.w, b.h) >= 0.28 * S && len >= 0.12 * M;
     // A round loop is a head; a wing loop is drawn long (or lopsided).
     const longLoop = it.closed && (round < 0.8 || Math.max(b.w, b.h) >= 1.45 * Math.min(b.w, b.h));
     if (attached && high && big && !neck && (!it.closed || longLoop)) {
-      const raised = rise >= 0.2 * S && b.y0 < bb.y0 + 0.15 * bb.h && rootMid;
+      const raised = rise >= 0.2 * S && b.y0 < bb.y0 + 0.15 * bb.h && rootMid && Math.max(b.w, b.h) >= 0.5 * S;
       const flung = sticksOut && b.w >= 0.5 * b.h && c[1] < center[1] - 0.05 * H;
       const loop = longLoop && b.y0 < bb.y0 + 0.25 * bb.h;
       const zig = !it.closed && reversals(s.pts) >= 3 && rootMid;
@@ -165,7 +205,7 @@ export function analyze(strokes: Stroke[]): Anatomy | null {
   const roundness = closed ? roundOf(bodyPoly, polyLen([...bodyPoly, bodyPoly[0]])) : 0;
   const legLen = legs.length ? legs.reduce((a, l) => a + bbox(l.pts).h, 0) / legs.length / H : 0;
 
-  const L = legs.length, Wn = wings.length;
+  const L = legs.length, Wn = wings.length, Rn = wheels.length;
   let kind: Kind;
   if (crossings >= 18 && density >= 7) kind = 'scribble';
   else if (Wn >= 1 && L <= 4) kind = 'flyer'; // a bird seen side-on shows one wing and two legs
@@ -173,13 +213,14 @@ export function analyze(strokes: Stroke[]): Anatomy | null {
   else if (L >= 3) kind = 'quadruped';
   else if (L === 2) kind = 'biped';
   else if (L === 1) kind = 'hopper';
+  else if (Rn >= 1) kind = 'wheeled';
   else if (closed && roundness >= 0.72 && bb.w >= 0.6 * W && bb.h >= 0.6 * H && bb.w < 1.22 * bb.h && bb.h < 1.22 * bb.w) kind = 'roller';
   else if (aspect >= 1.9) kind = 'worm';
   else kind = 'jelly';
 
   return {
     kind,
-    parts: [...tails, ...wings, ...legs, body, ...decor, ...dots],
+    parts: [...tails, ...wings, ...legs, body, ...headParts, ...wheels, ...decor, ...dots],
     body,
     eyes,
     box,
@@ -188,6 +229,8 @@ export function analyze(strokes: Stroke[]): Anatomy | null {
     legs: L,
     wings: Wn,
     tails: tails.length,
+    wheels: Rn,
+    heads: headParts.length,
     roundness,
     aspect,
     crossings,
