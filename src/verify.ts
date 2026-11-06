@@ -21,5 +21,5 @@ export function verify(code: string): Verified | null {
   const r = race.racers[0];
   if (r.finishTime === null) return null;
   // The drawing alone, without its name: one board entry per drawing.
-  return { kind: d.anatomy.kind, ms: Math.round(r.finishTime * 1000), score: Math.round(r.s.quality * 1000) / 1000, strokes: codeOf(d.strokes, '') };
+  return { kind: d.anatomy.kind, ms: Math.round(r.finishTime * 1000), score: Math.round(r.s.quality * 1000) / 1000, strokes: codeOf(d.strokes, '', d.pick) };
 }

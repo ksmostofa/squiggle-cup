@@ -12,7 +12,7 @@
     "deploy": "bash scripts/deploy.sh",
     "deploy:pages": "bash scripts/deploy-pages.sh",
     "prd": "node prd/build.mjs",
-    "test": "node scripts/run-ts.mjs test/sim.test.ts && node scripts/run-ts.mjs test/balance.test.ts && node scripts/run-ts.mjs test/preview.test.ts && node scripts/run-ts.mjs test/board.test.ts",
+    "test": "node scripts/run-ts.mjs test/sim.test.ts && node scripts/run-ts.mjs test/balance.test.ts && node scripts/run-ts.mjs test/preview.test.ts && node scripts/run-ts.mjs test/board.test.ts && node scripts/run-ts.mjs test/rooms.test.ts",
     "test:browser": "playwright test"
   },
   "dependencies": {

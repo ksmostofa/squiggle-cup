@@ -42,6 +42,22 @@ export interface Anatomy {
 // Wheel detection, for the vehicle mode to come. Off: creatures only for now.
 export const WHEELS = false;
 
+// The kinds a drawing can really move as, the one it reads as first. A
+// walker's legs drive its gait, so legs fix the kind; wings can also fly, and
+// a legless shape can slither, ooze or (if it's a closed outline) roll.
+// Every kind has the same best time, so picking one is a matter of taste.
+export const KIND_ORDER: Kind[] = ['biped', 'quadruped', 'centipede', 'hopper', 'flyer', 'roller', 'wheeled', 'worm', 'jelly', 'scribble'];
+export function kindsFor(a: Anatomy): Kind[] {
+  const L = a.legs;
+  const walk: Kind | null = L >= 5 ? 'centipede' : L >= 3 ? 'quadruped' : L === 2 ? 'biped' : L === 1 ? 'hopper' : null;
+  const out: Kind[] = [];
+  if (a.wings) out.push('flyer');
+  if (walk) out.push(walk);
+  else { if (a.wheels) out.push('wheeled'); if (a.closed) out.push('roller'); out.push('worm', 'jelly'); }
+  return [a.kind, ...out.filter((k) => k !== a.kind)];
+}
+export const withKind = (a: Anatomy, k?: Kind | null): Anatomy => (k && k !== a.kind && kindsFor(a).includes(k) ? { ...a, kind: k } : a);
+
 export function isClosed(p: Pt[], len: number) {
   return p.length >= 4 && len >= 50 && dist(p[0], p[p.length - 1]) <= Math.max(24, len * 0.16);
 }
@@ -67,6 +83,18 @@ export function analyze(strokes: Stroke[]): Anatomy | null {
   if (bi < 0) items.forEach((it, i) => { if (it.len > best) { best = it.len; bi = i; } });
   if (bi < 0 || items[bi].len < 20) return null;
 
+  // A stick figure: a round loop with a torso hanging from it, and legs
+  // hanging from that. The loop is its head (however big), the torso its body.
+  let bigHead = -1;
+  {
+    const hb = items[bi].bb, S = Math.max(hb.w, hb.h);
+    const below = (b: typeof hb, top: typeof hb) => b.y0 >= top.y0 + 0.6 * top.h && b.y0 <= top.y1 + 0.15 * M && b.x1 > top.x0 && b.x0 < top.x1;
+    const torso = items[bi].closed && roundOf(items[bi].s.pts, items[bi].len) >= 0.7 ? items.findIndex((it, j) => j !== bi && it.len >= 0.25 * S
+      && below(it.bb, hb) && it.bb.y1 > hb.y1 + 0.3 * hb.h && it.bb.w >= 0.3 * hb.w && it.bb.h >= 0.4 * hb.h
+      && items.some((l, k) => k !== bi && k !== j && !l.closed && l.bb.y0 >= it.bb.y0 + 0.5 * it.bb.h && l.bb.y1 > it.bb.y1 + 0.1 * it.bb.h)) : -1;
+    if (torso >= 0) { bigHead = bi; bi = torso; }
+  }
+
   const bodyIt = items[bi];
   const closed = bodyIt.closed;
   const bodyPoly = rdp(bodyIt.s.pts, 1.5);
@@ -80,7 +108,7 @@ export function analyze(strokes: Stroke[]): Anatomy | null {
   const endWings: Part[] = [];
   const eyes: Anatomy['eyes'] = [];
   // Small round loops: heads, which tell a neck from a raised wing.
-  const heads = items.filter((it, i) => i !== bi && it.closed && roundOf(it.s.pts, it.len) >= 0.6 && Math.max(it.bb.w, it.bb.h) < 0.6 * Math.max(bb.w, bb.h))
+  const heads = items.filter((it, i) => i === bigHead || (i !== bi && it.closed && roundOf(it.s.pts, it.len) >= 0.6 && Math.max(it.bb.w, it.bb.h) < 0.6 * Math.max(bb.w, bb.h)))
     .map((it) => ({ ...it, c: [it.bb.x0 + it.bb.w / 2, it.bb.y0 + it.bb.h / 2] as Pt }));
 
   items.forEach((it, i) => {
@@ -110,6 +138,7 @@ export function analyze(strokes: Stroke[]): Anatomy | null {
     // A head: a roundish loop off the front or back of the body (or a round
     // one on top of it), on or near it. It stays put, and the eyes and mouth
     // drawn in it stay with it.
+    if (i === bigHead) { headParts.push(part('head', s.pts, c)); return; }
     const S0 = Math.max(bb.w, bb.h);
     const atEnd = c[0] > bb.x1 - 0.2 * bb.w || c[0] < bb.x0 + 0.2 * bb.w;
     const onTop = c[1] < bb.y0 && c[0] > bb.x0 && c[0] < bb.x1 && Math.max(b.w, b.h) < 1.4 * Math.min(b.w, b.h);

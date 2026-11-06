@@ -8,7 +8,7 @@ test('rolling preview uses the submitted drawing and the race simulation', async
   const result = await page.evaluate(async (drawing) => {
     const urls = ['/src/pad.ts', '/src/race.ts', '/src/encode.ts', '/src/analyze.ts', '/src/course.ts', '/src/creature.ts'];
     const [{ Pad }, { Race, COUNTDOWN }, { encode, decode }, { analyze }, { INKS }, { DT }] = await Promise.all(urls.map((url) => import(url)));
-    const packed = encode({ venue: 0, seed: 0, name: '', strokes: drawing.map((s) => ({ pts: s.pts, ink: Math.max(0, INKS.indexOf(s.color)), thick: s.w > 8.5 })) });
+    const packed = encode({ pick: 0, seed: 0, name: '', strokes: drawing.map((s) => ({ pts: s.pts, ink: Math.max(0, INKS.indexOf(s.color)), thick: s.w > 8.5 })) });
     const submitted = decode(packed).strokes.map((s: { pts: number[][]; ink: number; thick: boolean }) => ({ pts: s.pts, color: INKS[s.ink], w: s.thick ? 11 : 6 }));
     const expected = new Race([{ anatomy: analyze(submitted), name: 'Ball', kind: 'player' }]);
     // The preview skips showing the countdown, but must preserve its settling.

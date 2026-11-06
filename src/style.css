@@ -94,6 +94,7 @@ button { cursor: pointer; }
 .btn.ghost:hover { border-color: var(--ink); background: transparent; color: var(--ink); }
 .btn span { transition: transform 0.2s var(--ease); }
 .btn:hover span { transform: translateX(3px); }
+.btn:disabled { opacity: 0.35; cursor: not-allowed; pointer-events: none; }
 
 .field { display: grid; gap: 6px; }
 .field > span { font-size: 10px; text-transform: uppercase; color: var(--grey); }
@@ -175,6 +176,20 @@ canvas.stage { display: block; width: 100%; height: 108px; }
 .tool svg { width: 20px; height: 20px; fill: none; stroke: var(--ink); stroke-width: 1.6; stroke-linecap: round; stroke-linejoin: round; }
 .tool.width .nib { width: 18px; height: 2px; background: var(--ink); border-radius: 2px; transition: height 0.15s; }
 .tool.width.thick .nib { height: 5px; }
+.tool.on { background: var(--ink); border-color: var(--ink); }
+.tool.on svg { stroke: var(--paper); }
+canvas.pad.erasing { cursor: none; }
+/* Narrow phones: every tool, the eraser too, on one row. */
+@media (max-width: 420px) {
+  .tools { gap: 5px; }
+  .inks { gap: 6px; }
+  .ink { width: 30px; height: 30px; }
+  .ink::after { width: 16px; height: 16px; }
+  .tool { width: 34px; height: 34px; }
+}
+.readout .kind.pick { display: inline-flex; align-items: center; gap: 6px; justify-self: start; padding: 2px 8px 2px 0; border: 0; border-bottom: 1px dashed var(--grey); background: none; color: inherit; font: inherit; font-weight: 600; font-size: 16px; letter-spacing: -0.01em; }
+.readout .kind.pick:hover { border-bottom-color: var(--ink); }
+.readout .kind.pick svg { width: 15px; height: 15px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
 .tools .sep { flex: 1; }
 .done-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 12px; align-items: end; }
 .who-drew { display: flex; flex-wrap: wrap; gap: 6px; list-style: none; margin: 12px 0 0; padding: 0; font-size: 10px; }
@@ -304,6 +319,10 @@ canvas.stage { display: block; width: 100%; height: 108px; }
 .seg button span { font-size: 10px; color: var(--grey); }
 .seg button.on { background: var(--ink); color: var(--paper); }
 .seg button.on span { color: #c9ccd2; }
+.seg.two { grid-template-columns: repeat(2, 1fr); margin-top: 8px; }
+.lanes li.away .who { opacity: 0.5; }
+.net-banner { position: fixed; top: 10px; left: 50%; transform: translateX(-50%); z-index: 50; margin: 0; padding: 6px 12px; background: var(--ink); color: var(--paper); font-size: 12px; letter-spacing: 0.06em; border-radius: 2px; }
+.net-banner[hidden] { display: none; }
 .lobby .host-only { margin: 0 0 14px; }
 
 
@@ -349,7 +368,8 @@ canvas.stage { display: block; width: 100%; height: 108px; }
 /* ---------- Live logo (home) ---------- */
 .live-logo { display: block; width: 150px; height: auto; overflow: visible; }
 .live-logo .lt { animation: letter-in 0.6s 0.05s var(--ease) both; }
-.live-logo .lw { stroke-dasharray: 1; stroke-dashoffset: 1; animation: line-draw 1.8s 0.6s cubic-bezier(0.4, 0.1, 0.3, 1) forwards; }
+/* The line is the creature's trail: it draws at the creature's pace, so it never runs through it. */
+.live-logo .lw { stroke-dasharray: 1 2; stroke-dashoffset: 1; animation: line-draw 2.2s 0.6s cubic-bezier(0.4, 0.1, 0.3, 1) forwards; }
 .live-logo .lc { animation: scurry 2.2s 0.6s cubic-bezier(0.4, 0.1, 0.3, 1) both; }
 .live-logo .lb { transform-box: fill-box; transform-origin: 50% 100%; animation: bob 0.32s ease-in-out infinite alternate; }
 .live-logo .legs { transform-box: fill-box; transform-origin: 50% 0; animation: legs 0.16s steps(2) infinite; }
@@ -427,3 +447,9 @@ canvas.stage { display: block; width: 100%; height: 108px; }
 .board-title { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 10px 16px; margin-top: 8px; }
 .board-title h1 { margin: 0; }
 .board-title .btn { min-height: 42px; }
+/* Short phones: the bots choice fits beside the lanes without pushing Start off screen. */
+@media (max-height: 720px) {
+  .lobby .lanes li { height: 36px; }
+  .lobby .seg button { padding: 6px 4px; }
+  .lobby .seg.bots button span { display: none; }
+}

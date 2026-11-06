@@ -15,7 +15,7 @@ const check = (ok: boolean, msg: string) => { console.log(`${ok ? 'ok  ' : 'FAIL
 // ---------- Dare links ----------
 {
   const strokes = rivalDrawing(mulberry32(7), INKS).map((s) => ({ pts: s.pts, ink: 1, thick: s.w > 10 }));
-  const s = encode({ venue: 0, seed: 0xdeadbeef, name: 'Sir Reginald Fourlegs III ✨', strokes });
+  const s = encode({ pick: 0, seed: 0xdeadbeef, name: 'Sir Reginald Fourlegs III ✨', strokes });
   const d = decode(s)!;
   check(!!d && d.seed === 0xdeadbeef && d.name === 'Sir Reginald Fourlegs III ✨', `encode/decode header (${s.length} chars)`);
   check(d.strokes.length === strokes.length, 'strokes round trip');
@@ -61,6 +61,19 @@ const check = (ok: boolean, msg: string) => { console.log(`${ok ? 'ok  ' : 'FAIL
     }
   }
   check(!wrong.length, `look-alikes keep their kind (tails, necks, ears, snakes, balls, blobs)${wrong.length ? ': ' + wrong.slice(0, 8).join(', ') : ''}`);
+}
+
+// A stick figure whose head is its biggest loop: the head is not the body,
+// and the torso's open bottom isn't two more legs.
+{
+  const S = (pts: number[][]) => ({ pts: pts as [number, number][], color: INKS[0], w: 11 });
+  const ring = Array.from({ length: 41 }, (_, i) => [490 + 110 * Math.cos((i / 40) * 2 * Math.PI), 380 + 105 * Math.sin((i / 40) * 2 * Math.PI)]);
+  const torso = [[480, 485], [480, 540], [490, 590], [510, 625], [560, 615], [610, 600], [605, 560], [590, 520], [565, 470]];
+  for (const [label, t] of [['open', torso], ['closed', [...torso, [480, 487]]]] as const) {
+    const a = analyze([S(ring), S([[443, 373], [444, 374]]), S([[507, 375], [508, 376]]), S([[462, 438], [480, 444], [500, 440], [513, 428]]), S(t),
+      S([[540, 620], [545, 680], [555, 740]]), S([[585, 610], [600, 660], [628, 708]])])!;
+    check(a.kind === 'biped' && a.legs === 2 && a.heads === 1, `big-headed stick figure (${label} torso) reads as a biped with a head (${a.kind}, ${a.legs} legs, ${a.heads} heads)`);
+  }
 }
 
 // ---------- Races ----------
@@ -134,7 +147,7 @@ function watch(entries: Entry[], seed: number) {
   // Through a dare link: the drawing as decoded must race identically.
   const e = entry('quadruped', 3, true);
   const packed = e.anatomy.parts.map((p) => ({ pts: p.pts, ink: 0, thick: false }));
-  const once = decode(encode({ venue: 0, seed: 5, name: 'x', strokes: packed }))!;
+  const once = decode(encode({ pick: 0, seed: 5, name: 'x', strokes: packed }))!;
   const twice = decode(encode(once))!;
   const race = (d: typeof once) => {
     const an = analyze(d.strokes.map((s) => ({ pts: s.pts, color: INKS[0], w: 7 })))!;

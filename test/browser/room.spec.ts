@@ -92,16 +92,14 @@ test('three players draw, agree on results, save PNGs and rematch three times', 
       await page.getByRole('textbox', { name: 'Creature name' }).fill(names[i]);
     }));
     await Promise.all(pages.map((page) => page.locator('.done').click()));
-    let baseline: string[] | undefined;
     for (let heat = 0; heat < 4; heat++) {
       await Promise.all(pages.map((page) => expect(page.locator('.screen.results')).toBeVisible({ timeout: 60_000 })));
       const tables = await Promise.all(pages.map((page) => page.locator('.table li').evaluateAll((rows) => rows.map((row) => `${row.querySelector('.who b')?.childNodes[0].textContent?.trim()}: ${row.querySelector('.time')?.textContent}`))));
       expect(tables[1]).toEqual(tables[0]);
       expect(tables[2]).toEqual(tables[0]);
-      if (baseline) expect(tables[0]).toEqual(baseline);
-      baseline = tables[0];
-      expect(baseline).toHaveLength(5);
-      for (const name of names) expect(baseline.some((row) => row.startsWith(name))).toBe(true);
+      // A rematch deals new house creatures; the players' drawings stay.
+      expect(tables[0]).toHaveLength(5);
+      for (const name of names) expect(tables[0].some((row) => row.startsWith(name))).toBe(true);
       await expect(pages[1].getByRole('button', { name: 'Rematch', exact: true })).toBeHidden();
       if (heat < 3) await pages[0].getByRole('button', { name: 'Rematch', exact: true }).click();
     }
@@ -119,7 +117,8 @@ test('three players draw, agree on results, save PNGs and rematch three times', 
       expect(data.readUInt32BE(20)).toBe(height);
     }
     await pages[0].screenshot({ path: testInfo.outputPath('results.png') });
-    await contexts[0].close();
+    // Leaving on purpose hands over the host role at once (a dropped connection holds the seat).
+    await pages[0].locator('.home-link').click();
     const nextHost = pages[names.indexOf(nextHostName)];
     await expect(nextHost.getByRole('button', { name: 'Rematch', exact: true })).toBeVisible();
     await nextHost.getByRole('button', { name: 'Rematch', exact: true }).click();

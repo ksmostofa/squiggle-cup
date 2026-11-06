@@ -507,7 +507,11 @@ export function drawPreview(ctx: CanvasRenderingContext2D, W: number, H: number,
       ctx.fillStyle = TEXT;
       ctx.font = `500 ${Math.round(9.5 * dpr)}px ${MONO}`;
       ctx.textAlign = 'left';
-      ctx.fillText(`${(X * 1000).toLocaleString('en').replace(/,/g, ' ')}`, sx(X) + 4 * dpr, ground + 14 * dpr);
+      // Labels fade out at the edges rather than being cut in half.
+      const text = `${(X * 1000).toLocaleString('en').replace(/,/g, ' ')}`, lx = sx(X) + 4 * dpr;
+      ctx.globalAlpha = Math.max(0, Math.min(1, Math.min(lx, W - lx - ctx.measureText(text).width) / (16 * dpr)));
+      ctx.fillText(text, lx, ground + 14 * dpr);
+      ctx.globalAlpha = 1;
     }
   }
   for (let y = ground - 0.25 * k; y > 0; y -= 0.25 * k) { ctx.fillStyle = FAINT; ctx.fillRect(0, Math.round(y), W, Math.max(1, 0.7 * dpr)); }

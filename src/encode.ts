@@ -9,12 +9,15 @@ const GRID = 3;          // pad pixels per stored unit; the 600 px pad fits in 0
 const MAX_NAME = 36;     // bytes of UTF-8
 
 export interface PackedStroke { pts: Pt[]; ink: number; thick: boolean }
-export interface Dare { venue: number; seed: number; name: string; strokes: PackedStroke[] }
+// pick: the kind the player chose for their creature, 1-based (0: as the
+// drawing reads). It sits in what was the never-used venue byte, so older
+// codes still read the same.
+export interface Dare { pick: number; seed: number; name: string; strokes: PackedStroke[] }
 
 const q = (v: number) => Math.max(0, Math.min(200, Math.round(v / GRID)));
 
 export function encode(d: Dare): string {
-  const out: number[] = [VERSION, d.venue & 255];
+  const out: number[] = [VERSION, d.pick & 255];
   const seed = d.seed >>> 0;
   out.push(seed >>> 24, (seed >>> 16) & 255, (seed >>> 8) & 255, seed & 255);
 
@@ -52,7 +55,7 @@ export function decode(s: string): Dare | null {
       return b[i++];
     };
     if (next() !== VERSION) return null;
-    const venue = next();
+    const pick = next();
     const seed = ((next() << 24) | (next() << 16) | (next() << 8) | next()) >>> 0;
     const nameLen = next();
     const name = new TextDecoder().decode(b.slice(i, i + nameLen));
@@ -70,7 +73,7 @@ export function decode(s: string): Dare | null {
       }
       strokes.push({ pts, ink: flags & 7, thick: (flags & 8) !== 0 });
     }
-    return { venue, seed, name, strokes };
+    return { pick, seed, name, strokes };
   } catch {
     return null;
   }

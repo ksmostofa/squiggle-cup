@@ -5,18 +5,22 @@ import { expect, test } from '@playwright/test';
 const names = async (page: import('@playwright/test').Page) =>
   (await page.locator('.table li .who b').allTextContents()).filter((n) => !/Your Creature/.test(n)).sort().join(', ');
 
-test('a new game deals new house creatures; rematch and redraw keep them', async ({ page }) => {
+test('a new game and a rematch deal new house creatures; redraw keeps them', async ({ page }) => {
   await page.goto('/?demo=draw&family=dog');
   await page.click('.btn.done');
   await page.waitForSelector('.screen.results', { timeout: 60_000 });
   const first = await names(page);
-  await page.click('.again');
-  await page.waitForSelector('.screen.results', { timeout: 60_000 });
-  expect(await names(page), 'rematch keeps the lineup').toBe(first);
   await page.click('.redraw');
+  await expect(page.locator('.screen.draw'), 'redraw starts from a blank sheet').toContainText('Waiting for ink');
+  await page.goto('/?demo=draw&family=dog');
   await page.click('.btn.done');
   await page.waitForSelector('.screen.results', { timeout: 60_000 });
-  expect(await names(page), 'redraw keeps the lineup').toBe(first);
+  const before = await names(page);
+  await page.click('.again');
+  await page.waitForSelector('.screen.results', { timeout: 60_000 });
+  const mine = page.locator('.table li.me .who b');
+  await expect(mine, 'rematch keeps my drawing').toContainText('you');
+  expect(await names(page), 'rematch deals a new lineup').not.toBe(before);
   await page.goto('/?demo=draw&family=dog');
   await page.click('.btn.done');
   await page.waitForSelector('.screen.results', { timeout: 60_000 });
